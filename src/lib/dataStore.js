@@ -244,6 +244,109 @@ function hasCompleteFiscalData(profile){
   return !!(profile && profile.cpfCnpj && profile.taxRegime && profile.city);
 }
 
+/* ================= Direitos do titular (LGPD) — exportação e exclusão ================= */
+async function loadDataRightsConfig(psicologoId){
+  const { data, error } = await supabase.from('data_rights_config').select('*').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadDataRightsConfig', error);
+  return { responseSlaDays: data ? data.response_sla_days : 15 };
+}
+async function saveDataRightsConfig(psicologoId, config){
+  const { error } = await supabase.from('data_rights_config').upsert(
+    { psicologo_id: psicologoId, response_sla_days: config.responseSlaDays, updated_at: new Date().toISOString() },
+    { onConflict:'psicologo_id' }
+  );
+  logDbError('saveDataRightsConfig', error);
+}
+
+// Exporta só os dados administrativos do próprio titular — nunca notas privadas do psicólogo
+// (a RLS de notes já bloqueia paciente por completo, então isso é reforçado em dois níveis).
+async function exportMyData(currentUser, patientRecord){
+  const lines = [
+    `Exportação de dados — TerapIA`,
+    `Titular: ${currentUser.name} (${currentUser.email})`,
+    `Papel: ${currentUser.role === 'psicologo' ? 'Psicólogo(a)' : 'Paciente'}`,
+    `Gerado em: ${formatDate(new Date().toISOString())}`,
+    '',
+  ];
+  if(currentUser.role === 'paciente' && patientRecord){
+    const [sessions, tasks, charges, receipts] = await Promise.all([loadSessions(), loadTasks(), loadCharges(), loadReceipts()]);
+    const mySessions = sessions.filter(s => s.patientId === patientRecord.id);
+    const myTasks = tasks.filter(t => t.patientId === patientRecord.id);
+    const myCharges = charges.filter(c => c.patientId === patientRecord.id);
+    const myReceipts = receipts.filter(r => r.patientId === patientRecord.id);
+    lines.push('== Meus dados cadastrais ==');
+    lines.push(`Nome: ${patientRecord.name}`, `E-mail: ${patientRecord.email}`, `Telefone: ${patientRecord.phone || '—'}`, '');
+    lines.push('== Minhas sessões ==');
+    mySessions.forEach(s => lines.push(`${formatDateOnly(s.date)} ${s.startTime} — ${s.status} — ${s.modalidade} — ${formatCurrency(s.valor)}`));
+    if(!mySessions.length) lines.push('Nenhuma.');
+    lines.push('', '== Minhas tarefas ==');
+    myTasks.forEach(t => lines.push(`${t.title} — ${t.status}`));
+    if(!myTasks.length) lines.push('Nenhuma.');
+    lines.push('', '== Minhas cobranças ==');
+    myCharges.forEach(c => lines.push(`${c.description} — ${formatCurrency(c.amount)} — ${c.status}`));
+    if(!myCharges.length) lines.push('Nenhuma.');
+    lines.push('', '== Meus recibos ==');
+    myReceipts.forEach(r => lines.push(`${r.number} — ${formatCurrency(r.amount)} — ${formatDateOnly(r.date)}`));
+    if(!myReceipts.length) lines.push('Nenhum.');
+    lines.push('', 'Observação: notas clínicas privadas do seu psicólogo não fazem parte desta exportação — são de uso exclusivo profissional, conforme a LGPD.');
+  } else {
+    lines.push('Dados cadastrais do psicólogo(a):');
+    lines.push(`Nome: ${currentUser.name}`, `E-mail: ${currentUser.email}`);
+    lines.push('', 'Para o histórico completo de pacientes, sessões e financeiro, utilize as telas do sistema — esta exportação cobre apenas seus dados de conta.');
+  }
+  const blob = new Blob([lines.join('\n')], { type:'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `meus-dados-terapia-${todayStr()}.txt`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function rowToDeletionRequest(r){
+  return {
+    id:r.id, requesterId:r.requester_id, requesterRole:r.requester_role, psicologoId:r.psicologo_id,
+    patientId:r.patient_id, status:r.status, requestedAt:r.requested_at, resolvedAt:r.resolved_at, resolutionNote:r.resolution_note,
+  };
+}
+async function loadMyDeletionRequests(userId){
+  const { data, error } = await supabase.from('deletion_requests').select('*').eq('requester_id', userId).order('requested_at', { ascending:false });
+  logDbError('loadMyDeletionRequests', error);
+  return data ? data.map(rowToDeletionRequest) : [];
+}
+async function loadDeletionRequestsForPsicologo(psicologoId){
+  const { data, error } = await supabase.from('deletion_requests').select('*').eq('psicologo_id', psicologoId).order('requested_at', { ascending:false });
+  logDbError('loadDeletionRequestsForPsicologo', error);
+  return data ? data.map(rowToDeletionRequest) : [];
+}
+async function createDeletionRequest({ requesterId, requesterRole, psicologoId, patientId }){
+  const { data, error } = await supabase.from('deletion_requests').insert({
+    requester_id: requesterId, requester_role: requesterRole, psicologo_id: psicologoId || null, patient_id: patientId || null,
+  }).select().single();
+  logDbError('createDeletionRequest', error);
+  await pushAudit({ userId: requesterId, action: 'solicitacao_exclusao_dados', patientId: patientId || null });
+  if(psicologoId && requesterRole === 'paciente'){
+    await pushNotificationFor('notifications', psicologoId, {
+      type: 'exclusao_dados', message: 'Um paciente solicitou a exclusão/anonimização dos próprios dados.',
+    });
+  }
+  return data ? rowToDeletionRequest(data) : null;
+}
+// Anonimiza o cadastro do paciente, preservando sessões/cobranças/recibos (retenção fiscal) e a auditoria.
+async function anonymizePatientData(patientId){
+  const { error } = await supabase.from('patients').update({
+    name: 'Paciente removido', social_name: null, email: `removido-${patientId.slice(0,8)}@anonimizado.terapia`,
+    phone: null, cpf: null, emergency_contact: null, address: null, notes: null, birth_date: null,
+  }).eq('id', patientId);
+  logDbError('anonymizePatientData', error);
+}
+async function resolveDeletionRequest(requestId, patientId, note){
+  if(patientId) await anonymizePatientData(patientId);
+  const { error } = await supabase.from('deletion_requests').update({
+    status: 'concluida', resolved_at: new Date().toISOString(), resolution_note: note || 'Dados anonimizados.',
+  }).eq('id', requestId);
+  logDbError('resolveDeletionRequest', error);
+}
+
 /* ================= Preços ================= */
 function defaultPricing(){ return { presencial: DEFAULT_SESSION_PRICE, online: DEFAULT_SESSION_PRICE }; }
 async function loadPricing(psicologoId){
@@ -617,6 +720,8 @@ export {
   THEME_PALETTES, loadThemeColor, saveThemeColor, applyTheme,
   TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
   loadProfessionalInfoPublic, hasCompleteFiscalData,
+  loadDataRightsConfig, saveDataRightsConfig, exportMyData,
+  loadMyDeletionRequests, loadDeletionRequestsForPsicologo, createDeletionRequest, resolveDeletionRequest,
   defaultPricing, loadPricing, savePricing, getDefaultPrice,
   findBlockConflict, findSessionConflict, isWithinWorkingHours, checkSlotAvailability,
   isWithinAdvanceWindow, listAvailableSlotsForDate, toMinutes, weekdayKeyOf, rangesOverlap,
