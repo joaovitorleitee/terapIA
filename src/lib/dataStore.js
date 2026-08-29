@@ -605,6 +605,35 @@ async function saveCharges(charges){
   logDbError('saveCharges', error);
 }
 const chargeId = uuid;
+
+/* ================= Despesas e lucro ================= */
+const EXPENSE_CATEGORIES = ['Aluguel', 'Material', 'Marketing', 'Software', 'Impostos', 'Supervisão', 'Outros'];
+function rowToExpense(r){
+  return { id:r.id, psicologoId:r.psicologo_id, category:r.category, description:r.description||'', amount:Number(r.amount), date:r.date, recurrence:r.recurrence, createdAt:r.created_at };
+}
+function expenseToRow(e){
+  return { id:e.id, psicologo_id:e.psicologoId, category:e.category, description:e.description||null, amount:e.amount, date:e.date, recurrence:e.recurrence||'unica' };
+}
+async function loadExpenses(){
+  const { data, error } = await supabase.from('expenses').select('*').order('date', { ascending:false });
+  logDbError('loadExpenses', error);
+  return data ? data.map(rowToExpense) : [];
+}
+async function saveExpenses(expenses){
+  if(!expenses.length) return;
+  const { error } = await supabase.from('expenses').upsert(expenses.map(expenseToRow), { onConflict:'id' });
+  logDbError('saveExpenses', error);
+}
+async function deleteExpense(id){
+  const { error } = await supabase.from('expenses').delete().eq('id', id);
+  logDbError('deleteExpense', error);
+}
+const expenseId = uuid;
+// Despesa "mensal" não gera linhas futuras — conta dinamicamente em qualquer período igual/posterior à data original.
+function expenseAppliesToPeriod(expense, periodStart, periodEnd){
+  if(expense.recurrence === 'mensal') return expense.date <= periodEnd;
+  return expense.date >= periodStart && expense.date <= periodEnd;
+}
 const PAYMENT_METHODS = ['Pix', 'Cartão', 'Dinheiro', 'Transferência', 'Boleto', 'Outro'];
 
 /* ================= Recibos ================= */
@@ -759,6 +788,7 @@ export {
   loadNotes, saveNotes, noteId, loadTasks, saveTasks, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
+  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod,
   downloadTextFallbackReceipt, generateReceiptPDF,
   loadAuditLog, pushAudit,
   DOW_SHORT, MONTH_NAMES, toDateStr, fromDateStr, addDays, startOfWeek, todayStr,
