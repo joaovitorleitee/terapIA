@@ -551,6 +551,34 @@ async function saveTasks(tasks){
 }
 const taskId = uuid;
 
+/* ================= Biblioteca de modelos de tarefa ================= */
+function rowToTemplate(r){
+  return {
+    id:r.id, psicologoId:r.psicologo_id, title:r.title, instructions:r.instructions,
+    frequency:r.frequency, category:r.category || '', links:r.links || [], status:r.status,
+    createdAt:r.created_at, updatedAt:r.updated_at,
+  };
+}
+function templateToRow(t){
+  return {
+    id:t.id, psicologo_id:t.psicologoId, title:t.title, instructions:t.instructions,
+    frequency:t.frequency || 'unica', category:t.category || null, links:t.links || [],
+    status:t.status || 'ativo', updated_at:new Date().toISOString(),
+  };
+}
+async function loadTaskTemplates(){
+  const { data, error } = await supabase.from('task_templates').select('*').order('created_at', { ascending:false });
+  logDbError('loadTaskTemplates', error);
+  return data ? data.map(rowToTemplate) : [];
+}
+async function saveTaskTemplates(templates){
+  if(!templates.length) return;
+  const { error } = await supabase.from('task_templates').upsert(templates.map(templateToRow), { onConflict:'id' });
+  logDbError('saveTaskTemplates', error);
+}
+const templateId = uuid;
+const TEMPLATE_CATEGORIES = ['Ansiedade', 'Sono', 'Autoestima', 'Relacionamentos', 'Rotina', 'Geral'];
+
 /* ================= Cobranças ================= */
 function rowToCharge(r){
   return {
@@ -729,6 +757,7 @@ export {
   loadNotificationsFor, saveNotificationsFor, pushNotificationFor,
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
   loadNotes, saveNotes, noteId, loadTasks, saveTasks, taskId,
+  loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
   downloadTextFallbackReceipt, generateReceiptPDF,
   loadAuditLog, pushAudit,
