@@ -4,8 +4,9 @@ import {
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS,
   loadReceipts, saveReceipts, receiptId, generateReceiptPDF,
   loadPatients, loadSessions, formatCurrency, formatDateOnly, todayStr,
+  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod,
 } from '../../lib/dataStore.js';
-import { IconPlus, IconWallet } from '../icons.jsx';
+import { IconPlus, IconWallet, IconTrash } from '../icons.jsx';
 
 function PrecosPanel({ psicologoId }){
   const [pricing, setPricing] = useState(null);
@@ -119,6 +120,200 @@ function ReceiptsPanel({ psicologoId }){
 }
 
 
+function ExpenseFormModal({ onClose, onSave }){
+  const [category, setCategory] = useState('');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayStr());
+  const [recurrence, setRecurrence] = useState('unica');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setError('');
+    if(!category.trim()){ setError('Informe a categoria da despesa.'); return; }
+    if(!(Number(amount) > 0)){ setError('Informe um valor válido.'); return; }
+    setBusy(true);
+    try{
+      await onSave({ category: category.trim(), description: description.trim(), amount: Number(amount), date, recurrence });
+      onClose();
+    }catch(e){
+      setError('Não foi possível salvar a despesa agora.');
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box form-modal" onClick={e=>e.stopPropagation()}>
+        <h3>Nova despesa</h3>
+        {error && <div className="alert alert-danger">{error}</div>}
+        <div className="form-grid">
+          <div className="field">
+            <label>Categoria</label>
+            <input value={category} onChange={e=>setCategory(e.target.value)} placeholder="Ex.: Aluguel" list="expense-categories" />
+            <datalist id="expense-categories">
+              {EXPENSE_CATEGORIES.map(c => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+          <div className="field">
+            <label>Valor (R$)</label>
+            <input type="number" min="0" step="10" value={amount} onChange={e=>setAmount(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Data</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Recorrência</label>
+            <select value={recurrence} onChange={e=>setRecurrence(e.target.value)}>
+              <option value="unica">Única</option>
+              <option value="mensal">Mensal</option>
+            </select>
+          </div>
+          <div className="field full">
+            <label>Descrição <span style={{fontWeight:400, color:'var(--ink-faint)'}}>(opcional)</span></label>
+            <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Detalhes da despesa" />
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn-secondary" type="button" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" type="button" onClick={submit} disabled={busy}>
+            {busy && <span className="spinner"/>}
+            {busy ? 'Salvando…' : 'Adicionar despesa'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function monthRange(offset = 0){
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const start = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  const end = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  return { start, end };
+}
+
+function RelatorioPanel({ psicologoId }){
+  const [charges, setCharges] = useState(null);
+  const [expenses, setExpenses] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [periodPreset, setPeriodPreset] = useState('mes-atual'); // mes-atual | mes-anterior | personalizado
+  const [customStart, setCustomStart] = useState(monthRange(0).start);
+  const [customEnd, setCustomEnd] = useState(monthRange(0).end);
+  const [patientFilter, setPatientFilter] = useState('all');
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [c, e, p] = await Promise.all([loadCharges(), loadExpenses(), loadPatients()]);
+    setCharges(c.filter(x => x.psicologoId === psicologoId));
+    setExpenses(e.filter(x => x.psicologoId === psicologoId));
+    setPatients(p.filter(x => x.psicologoId === psicologoId));
+  }, [psicologoId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const addExpense = async (data) => {
+    const all = await loadExpenses();
+    const newExpense = { id: expenseId(), psicologoId, createdAt:new Date().toISOString(), ...data };
+    await saveExpenses([...all, newExpense]);
+    await refresh();
+  };
+
+  const removeExpense = async (id) => {
+    await deleteExpense(id);
+    await refresh();
+  };
+
+  if(charges === null){
+    return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>;
+  }
+
+  let periodStart, periodEnd;
+  if(periodPreset === 'mes-atual'){ ({ start:periodStart, end:periodEnd } = monthRange(0)); }
+  else if(periodPreset === 'mes-anterior'){ ({ start:periodStart, end:periodEnd } = monthRange(-1)); }
+  else { periodStart = customStart; periodEnd = customEnd; }
+
+  const chargesInScope = charges.filter(c => patientFilter === 'all' || c.patientId === patientFilter);
+
+  let receitaRecebida = 0;
+  chargesInScope.forEach(c => {
+    (c.payments || []).forEach(p => {
+      if(p.date && p.date >= periodStart && p.date <= periodEnd) receitaRecebida += Number(p.amount) || 0;
+    });
+  });
+
+  const receitaPrevista = chargesInScope
+    .filter(c => (c.status === 'pendente' || c.status === 'parcial'))
+    .filter(c => !c.dueDate || (c.dueDate >= periodStart && c.dueDate <= periodEnd))
+    .reduce((sum, c) => sum + (c.amount - (c.paidAmount || 0)), 0);
+
+  const expensesInPeriod = expenses.filter(e => expenseAppliesToPeriod(e, periodStart, periodEnd));
+  const totalDespesas = expensesInPeriod.reduce((sum, e) => sum + e.amount, 0);
+
+  const lucroLiquido = receitaRecebida - totalDespesas;
+
+  return (
+    <div>
+      <div className="toolbar">
+        <div className="filter-pills">
+          <button className={'filter-pill '+(periodPreset==='mes-atual'?'active':'')} onClick={()=>setPeriodPreset('mes-atual')}>Mês atual</button>
+          <button className={'filter-pill '+(periodPreset==='mes-anterior'?'active':'')} onClick={()=>setPeriodPreset('mes-anterior')}>Mês anterior</button>
+          <button className={'filter-pill '+(periodPreset==='personalizado'?'active':'')} onClick={()=>setPeriodPreset('personalizado')}>Personalizado</button>
+        </div>
+        <select value={patientFilter} onChange={e=>setPatientFilter(e.target.value)}>
+          <option value="all">Todos os pacientes</option>
+          {patients.map(p => <option key={p.id} value={p.id}>{p.socialName||p.name}</option>)}
+        </select>
+      </div>
+
+      {periodPreset === 'personalizado' && (
+        <div className="inline-fields" style={{marginBottom:16}}>
+          <div className="field">
+            <label>De</label>
+            <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Até</label>
+            <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      <div className="grid-cards" style={{marginBottom:20}}>
+        <div className="stat-card"><div className="stat-label">Receita recebida</div><div className="stat-value" style={{fontSize:20}}>{formatCurrency(receitaRecebida)}</div></div>
+        <div className="stat-card"><div className="stat-label">Receita prevista</div><div className="stat-value" style={{fontSize:20}}>{formatCurrency(receitaPrevista)}</div></div>
+        <div className="stat-card"><div className="stat-label">Despesas</div><div className="stat-value" style={{fontSize:20}}>{formatCurrency(totalDespesas)}</div></div>
+        <div className="stat-card"><div className="stat-label">Lucro líquido</div><div className="stat-value" style={{fontSize:20, color: lucroLiquido>=0 ? 'var(--primary-dark)' : 'var(--danger)'}}>{formatCurrency(lucroLiquido)}</div></div>
+      </div>
+
+      <div className="panel">
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+          <h3 style={{margin:0}}>Despesas</h3>
+          <button className="btn-new" onClick={()=>setShowExpenseForm(true)}><IconPlus size={15}/> Nova despesa</button>
+        </div>
+        <div className="panel-sub">Despesas mensais contam automaticamente em todo período igual ou posterior à data de cadastro.</div>
+        {expensesInPeriod.length === 0 ? (
+          <div className="field hint">Nenhuma despesa neste período.</div>
+        ) : expensesInPeriod.map(e => (
+          <div className="quick-charge-row" key={e.id}>
+            <span>{e.category}{e.description ? ' — '+e.description : ''} · {formatDateOnly(e.date)} · {formatCurrency(e.amount)}{e.recurrence==='mensal' ? ' (mensal)' : ''}</span>
+            <button className="icon-btn" title="Excluir" onClick={()=>removeExpense(e.id)}><IconTrash size={14}/></button>
+          </div>
+        ))}
+      </div>
+
+      {showExpenseForm && (
+        <ExpenseFormModal onClose={()=>setShowExpenseForm(false)} onSave={addExpense} />
+      )}
+    </div>
+  );
+}
+
 function FinanceiroPsicologo({ psicologoId, professionalName }){
   const [tab, setTab] = useState('recebimentos');
   return (
@@ -126,11 +321,13 @@ function FinanceiroPsicologo({ psicologoId, professionalName }){
       <div className="subtabs">
         <button className={tab==='recebimentos'?'active':''} onClick={()=>setTab('recebimentos')}>Recebimentos</button>
         <button className={tab==='recibos'?'active':''} onClick={()=>setTab('recibos')}>Recibos</button>
+        <button className={tab==='relatorio'?'active':''} onClick={()=>setTab('relatorio')}>Relatório</button>
         <button className={tab==='precos'?'active':''} onClick={()=>setTab('precos')}>Preços</button>
       </div>
       {tab === 'precos' && <PrecosPanel psicologoId={psicologoId} />}
       {tab === 'recebimentos' && <RecebimentosPanel psicologoId={psicologoId} professionalName={professionalName} />}
       {tab === 'recibos' && <ReceiptsPanel psicologoId={psicologoId} />}
+      {tab === 'relatorio' && <RelatorioPanel psicologoId={psicologoId} />}
     </div>
   );
 }
