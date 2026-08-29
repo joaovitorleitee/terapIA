@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient.js';
-import { loadPatients, savePatients, patientId, EMAIL_RE, TERMS_VERSION, formatDateOnly } from '../../lib/dataStore.js';
-import { IconPlus, IconSearch, IconEdit, IconArchive, IconUserPlus } from '../icons.jsx';
+import {
+  loadPatients, savePatients, patientId, EMAIL_RE, TERMS_VERSION, formatDateOnly,
+  loadDeletionRequestsForPsicologo, resolveDeletionRequest, formatDate,
+} from '../../lib/dataStore.js';
+import { IconPlus, IconSearch, IconEdit, IconArchive, IconUserPlus, IconShield } from '../icons.jsx';
 
 function PatientFormModal({ patient, onClose, onSave }){
   const isEdit = !!patient;
@@ -103,6 +106,8 @@ function PacientesPsicologo({ psicologoId }){
   const [statusFilter, setStatusFilter] = useState('ativo'); // ativo | arquivado | todos
   const [editing, setEditing] = useState(null); // patient object or 'new' or null
   const [linkedProfiles, setLinkedProfiles] = useState([]);
+  const [deletionRequests, setDeletionRequests] = useState([]);
+  const [resolvingId, setResolvingId] = useState(null);
 
   const refresh = useCallback(async () => {
     const p = await loadPatients();
@@ -117,9 +122,19 @@ function PacientesPsicologo({ psicologoId }){
         setLinkedProfiles([]);
       }
     }catch(e){ setLinkedProfiles([]); }
+    const reqs = await loadDeletionRequestsForPsicologo(psicologoId);
+    setDeletionRequests(reqs.filter(r => r.status === 'pendente'));
   }, [psicologoId]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  const handleResolveDeletion = async (request) => {
+    setResolvingId(request.id);
+    try{
+      await resolveDeletionRequest(request.id, request.patientId, 'Dados anonimizados pelo psicólogo.');
+      await refresh();
+    } finally { setResolvingId(null); }
+  };
 
   const consentFor = (patient) => {
     const linked = linkedProfiles.find(u => u.email.toLowerCase() === patient.email.toLowerCase());
@@ -162,6 +177,23 @@ function PacientesPsicologo({ psicologoId }){
 
   return (
     <div>
+      {deletionRequests.length > 0 && (
+        <div className="panel" style={{borderColor:'var(--danger)', borderWidth:1.5}}>
+          <h3 style={{display:'flex', alignItems:'center', gap:8}}><IconShield size={16} color="var(--danger)"/> Solicitações de exclusão/anonimização pendentes</h3>
+          <div className="panel-sub">Um paciente pediu para anonimizar os próprios dados. Ao confirmar, o cadastro dele é anonimizado — sessões, cobranças e recibos são mantidos pelo prazo legal.</div>
+          {deletionRequests.map(r => {
+            const p = patients && patients.find(x => x.id === r.patientId);
+            return (
+              <div className="quick-charge-row" key={r.id}>
+                <span>{p ? (p.socialName||p.name) : 'Paciente'} — solicitado em {formatDate(r.requestedAt)}</span>
+                <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>handleResolveDeletion(r)} disabled={resolvingId===r.id}>
+                  {resolvingId===r.id ? 'Processando…' : 'Confirmar anonimização'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="toolbar">
         <div style={{position:'relative', flex:1, minWidth:180}}>
           <IconSearch size={15} color="var(--ink-faint)" style={{position:'absolute', left:11, top:'50%', transform:'translateY(-50%)'}} />
