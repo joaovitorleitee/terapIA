@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { loadNotificationsFor, saveNotificationsFor, loadThemeColor, saveThemeColor, applyTheme, THEME_PALETTES, formatDate } from '../lib/dataStore.js';
+import {
+  loadNotificationsFor, saveNotificationsFor, loadThemeColor, saveThemeColor, applyTheme, THEME_PALETTES, formatDate,
+  TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
+} from '../lib/dataStore.js';
 import { IconBell, IconEdit, IconLogOut, IconCheckCircle } from './icons.jsx';
 
 function NotificationsBell({ ownerId, namespace='notifications' }){
@@ -59,13 +62,17 @@ function NotificationsBell({ ownerId, namespace='notifications' }){
 
 
 function ProfileSettingsModal({ psicologoId, onClose }){
+  const [tab, setTab] = useState('aparencia'); // aparencia | profissional | fiscal
   const [selected, setSelected] = useState('green');
+  const [profile, setProfile] = useState(defaultProfessionalProfile());
   const [loaded, setLoaded] = useState(false);
+  const [saveState, setSaveState] = useState('idle');
 
   useEffect(() => {
     (async () => {
-      const key = await loadThemeColor(psicologoId);
+      const [key, prof] = await Promise.all([loadThemeColor(psicologoId), loadProfessionalProfile(psicologoId)]);
       setSelected(key);
+      setProfile(prof);
       setLoaded(true);
     })();
   }, [psicologoId]);
@@ -76,25 +83,113 @@ function ProfileSettingsModal({ psicologoId, onClose }){
     await saveThemeColor(psicologoId, key);
   };
 
+  const set = (field) => (e) => setProfile(p => ({ ...p, [field]: e.target.value }));
+
+  const saveProfile = async () => {
+    setSaveState('saving');
+    await saveProfessionalProfile(psicologoId, profile);
+    setSaveState('saved');
+    setTimeout(() => setSaveState('idle'), 1500);
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={e=>e.stopPropagation()}>
+      <div className="modal-box form-modal" style={{maxHeight:'85vh', overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <h3>Meu perfil</h3>
-        <div className="field hint" style={{marginBottom:14}}>Personalize a cor de destaque do sistema. A escolha também aparece na visão dos seus pacientes.</div>
-        {loaded && (
-          <div className="theme-swatches">
-            {Object.entries(THEME_PALETTES).map(([key, p]) => (
-              <button key={key} className={'theme-swatch '+(selected===key?'active':'')} onClick={()=>choose(key)}>
-                <span className="sw-circle" style={{background:p.swatch}}>
-                  {selected===key && <IconCheckCircle size={18} color="#fff"/>}
-                </span>
-                <span className="sw-label">{p.label}</span>
-              </button>
-            ))}
+        <div className="subtabs" style={{marginTop:10}}>
+          <button className={tab==='aparencia'?'active':''} onClick={()=>setTab('aparencia')}>Aparência</button>
+          <button className={tab==='profissional'?'active':''} onClick={()=>setTab('profissional')}>Dados profissionais</button>
+          <button className={tab==='fiscal'?'active':''} onClick={()=>setTab('fiscal')}>Dados fiscais</button>
+        </div>
+
+        {tab === 'aparencia' && (
+          <div>
+            <div className="field hint" style={{marginBottom:14}}>Personalize a cor de destaque do sistema. A escolha também aparece na visão dos seus pacientes.</div>
+            {loaded && (
+              <div className="theme-swatches">
+                {Object.entries(THEME_PALETTES).map(([key, p]) => (
+                  <button key={key} className={'theme-swatch '+(selected===key?'active':'')} onClick={()=>choose(key)}>
+                    <span className="sw-circle" style={{background:p.swatch}}>
+                      {selected===key && <IconCheckCircle size={18} color="#fff"/>}
+                    </span>
+                    <span className="sw-label">{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
+
+        {tab === 'profissional' && loaded && (
+          <div>
+            <div className="field hint" style={{marginBottom:14}}>Essas informações ajudam o paciente a te conhecer melhor.</div>
+            {saveState !== 'idle' && <div className="alert alert-success" style={{display:'inline-flex'}}>{saveState==='saving'?'Salvando…':'Salvo.'}</div>}
+            <div className="form-grid">
+              <div className="field">
+                <label>Registro no conselho (CRP)</label>
+                <input value={profile.crp} onChange={set('crp')} placeholder="Ex.: 06/123456" />
+              </div>
+              <div className="field">
+                <label>Especialidade</label>
+                <input value={profile.specialty} onChange={set('specialty')} placeholder="Ex.: Terapia cognitivo-comportamental" />
+              </div>
+              <div className="field full">
+                <label>Apresentação para o paciente</label>
+                <textarea value={profile.bio} onChange={set('bio')} placeholder="Um breve resumo sobre sua abordagem e experiência" />
+              </div>
+            </div>
+            <div className="field hint">Foto de perfil ainda não está disponível — chega em uma próxima atualização.</div>
+            <div className="modal-actions" style={{marginTop:14}}>
+              <button className="btn-primary" type="button" onClick={saveProfile}>Salvar</button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'fiscal' && loaded && (
+          <div>
+            <div className="field hint" style={{marginBottom:14}}>Necessário para emitir recibos com validade completa e, futuramente, nota fiscal e cobrança digital. Nunca é exibido ao paciente, exceto o que compõe legalmente o recibo.</div>
+            {saveState !== 'idle' && <div className="alert alert-success" style={{display:'inline-flex'}}>{saveState==='saving'?'Salvando…':'Salvo.'}</div>}
+            <div className="form-grid">
+              <div className="field">
+                <label>CPF ou CNPJ</label>
+                <input value={profile.cpfCnpj} onChange={set('cpfCnpj')} placeholder="000.000.000-00" />
+              </div>
+              <div className="field">
+                <label>Regime tributário</label>
+                <select value={profile.taxRegime} onChange={set('taxRegime')}>
+                  <option value="">Selecione</option>
+                  {TAX_REGIMES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div className="field full">
+                <label>Município de prestação de serviço</label>
+                <input value={profile.city} onChange={set('city')} placeholder="Ex.: São Paulo, SP" />
+              </div>
+              <div className="field">
+                <label>Banco</label>
+                <input value={profile.bankName} onChange={set('bankName')} placeholder="Nome do banco" />
+              </div>
+              <div className="field">
+                <label>Agência</label>
+                <input value={profile.bankAgency} onChange={set('bankAgency')} placeholder="0000" />
+              </div>
+              <div className="field">
+                <label>Conta</label>
+                <input value={profile.bankAccount} onChange={set('bankAccount')} placeholder="00000-0" />
+              </div>
+              <div className="field">
+                <label>Chave Pix</label>
+                <input value={profile.pixKey} onChange={set('pixKey')} placeholder="CPF, e-mail, telefone ou chave aleatória" />
+              </div>
+            </div>
+            <div className="modal-actions" style={{marginTop:14}}>
+              <button className="btn-primary" type="button" onClick={saveProfile}>Salvar</button>
+            </div>
+          </div>
+        )}
+
         <div className="modal-actions" style={{marginTop:20}}>
-          <button className="btn-primary" type="button" onClick={onClose}>Concluído</button>
+          <button className="btn-secondary" type="button" onClick={onClose}>Fechar</button>
         </div>
       </div>
     </div>
