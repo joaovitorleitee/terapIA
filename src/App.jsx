@@ -9,7 +9,7 @@ import { NAV_PSICOLOGO, NAV_PACIENTE, SECTION_META } from './lib/navConfig.js';
 import { IconSparkle, IconMail, IconChevronDown, IconClockRewind, IconLock } from './components/icons.jsx';
 import { LoginScreen, RegisterScreen, ForgotPasswordScreen, ConsentGateScreen, RoleSelectScreen } from './components/auth.jsx';
 import { TermsModal } from './components/shared.jsx';
-import { NotificationsBell, AccountMenu, ProfileSettingsModal } from './components/layout.jsx';
+import { NotificationsBell, AccountMenu, ProfileSettingsModal, PrivacyModal } from './components/layout.jsx';
 import PainelPsicologo from './components/psicologo/Dashboard.jsx';
 import { PacientesPsicologo } from './components/psicologo/Patients.jsx';
 import { AgendaPsicologo } from './components/psicologo/Agenda.jsx';
@@ -30,6 +30,9 @@ function App(){
   const [loaded, setLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [patientRecord, setPatientRecord] = useState(null);
+  const [linkedPsicologoId, setLinkedPsicologoId] = useState(null);
   const [sessionNotice, setSessionNotice] = useState('');
   const lastActivityRef = React.useRef(Date.now());
 
@@ -73,7 +76,9 @@ function App(){
         const patients = await loadPatients();
         const record = patients.find(p => p.email.toLowerCase() === currentUser.email.toLowerCase());
         targetPsicologoId = record ? record.psicologoId : null;
+        setPatientRecord(record || null);
       }
+      setLinkedPsicologoId(targetPsicologoId);
       const key = targetPsicologoId ? await loadThemeColor(targetPsicologoId) : 'green';
       applyTheme(key);
     })();
@@ -212,7 +217,7 @@ function App(){
           <div className="account-menu-wrap">
             <button className="avatar" style={{width:30,height:30,fontSize:11,border:'none',cursor:'pointer'}} onClick={()=>setMenuOpen(o=>!o)}>{initials}</button>
             {menuOpen && (
-              <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onClose={()=>setMenuOpen(false)} />
+              <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onOpenPrivacy={()=>{ setMenuOpen(false); setShowPrivacy(true); }} onClose={()=>setMenuOpen(false)} />
             )}
           </div>
         </div>
@@ -243,7 +248,7 @@ function App(){
                 <IconChevronDown size={15} color="var(--ink-muted)" />
               </button>
               {menuOpen && (
-                <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onClose={()=>setMenuOpen(false)} />
+                <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onOpenPrivacy={()=>{ setMenuOpen(false); setShowPrivacy(true); }} onClose={()=>setMenuOpen(false)} />
               )}
             </div>
           </div>
@@ -266,6 +271,12 @@ function App(){
 
       {showProfile && role === 'psicologo' && (
         <ProfileSettingsModal psicologoId={currentUser.id} onClose={()=>setShowProfile(false)} />
+      )}
+      {showPrivacy && (
+        <PrivacyModal
+          currentUser={currentUser} patientRecord={patientRecord} psicologoId={linkedPsicologoId}
+          onClose={()=>setShowPrivacy(false)}
+        />
       )}
     </div>
   );
