@@ -198,33 +198,46 @@ function applyTheme(key){
   root.setProperty('--primary-soft', p.primarySoft);
 }
 
-/* ================= Perfil profissional e dados fiscais ================= */
+/* ================= Perfil profissional (visível ao paciente) e dados fiscais (só o psicólogo) ================= */
 const TAX_REGIMES = ['Autônomo (RPA)', 'MEI', 'Simples Nacional', 'Lucro Presumido', 'Outro'];
 function defaultProfessionalProfile(){
   return { crp:'', specialty:'', bio:'', cpfCnpj:'', taxRegime:'', city:'', bankName:'', bankAgency:'', bankAccount:'', pixKey:'' };
 }
-function rowToProfessionalProfile(r){
+async function loadProfessionalProfile(psicologoId){
+  const [infoRes, fiscalRes] = await Promise.all([
+    supabase.from('professional_info').select('*').eq('psicologo_id', psicologoId).maybeSingle(),
+    supabase.from('professional_profile').select('*').eq('psicologo_id', psicologoId).maybeSingle(),
+  ]);
+  logDbError('loadProfessionalProfile (info)', infoRes.error);
+  logDbError('loadProfessionalProfile (fiscal)', fiscalRes.error);
+  const info = infoRes.data || {};
+  const fiscal = fiscalRes.data || {};
   return {
-    crp: r.crp || '', specialty: r.specialty || '', bio: r.bio || '',
-    cpfCnpj: r.cpf_cnpj || '', taxRegime: r.tax_regime || '', city: r.city || '',
-    bankName: r.bank_name || '', bankAgency: r.bank_agency || '', bankAccount: r.bank_account || '', pixKey: r.pix_key || '',
+    crp: info.crp || '', specialty: info.specialty || '', bio: info.bio || '',
+    cpfCnpj: fiscal.cpf_cnpj || '', taxRegime: fiscal.tax_regime || '', city: fiscal.city || '',
+    bankName: fiscal.bank_name || '', bankAgency: fiscal.bank_agency || '',
+    bankAccount: fiscal.bank_account || '', pixKey: fiscal.pix_key || '',
   };
 }
-async function loadProfessionalProfile(psicologoId){
-  const { data, error } = await supabase.from('professional_profile').select('*').eq('psicologo_id', psicologoId).maybeSingle();
-  logDbError('loadProfessionalProfile', error);
-  if(!data) return defaultProfessionalProfile();
-  return rowToProfessionalProfile(data);
-}
 async function saveProfessionalProfile(psicologoId, profile){
-  const row = {
-    psicologo_id: psicologoId, crp: profile.crp || null, specialty: profile.specialty || null, bio: profile.bio || null,
-    cpf_cnpj: profile.cpfCnpj || null, tax_regime: profile.taxRegime || null, city: profile.city || null,
+  const infoRow = { psicologo_id: psicologoId, crp: profile.crp || null, specialty: profile.specialty || null, bio: profile.bio || null, updated_at: new Date().toISOString() };
+  const fiscalRow = {
+    psicologo_id: psicologoId, cpf_cnpj: profile.cpfCnpj || null, tax_regime: profile.taxRegime || null, city: profile.city || null,
     bank_name: profile.bankName || null, bank_agency: profile.bankAgency || null,
     bank_account: profile.bankAccount || null, pix_key: profile.pixKey || null, updated_at: new Date().toISOString(),
   };
-  const { error } = await supabase.from('professional_profile').upsert(row, { onConflict:'psicologo_id' });
-  logDbError('saveProfessionalProfile', error);
+  const [infoRes, fiscalRes] = await Promise.all([
+    supabase.from('professional_info').upsert(infoRow, { onConflict:'psicologo_id' }),
+    supabase.from('professional_profile').upsert(fiscalRow, { onConflict:'psicologo_id' }),
+  ]);
+  logDbError('saveProfessionalProfile (info)', infoRes.error);
+  logDbError('saveProfessionalProfile (fiscal)', fiscalRes.error);
+}
+// Usado pelo paciente — só especialidade/apresentação, nunca dados fiscais (tabela separada, sem policy de paciente).
+async function loadProfessionalInfoPublic(psicologoId){
+  const { data, error } = await supabase.from('professional_info').select('crp, specialty, bio').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadProfessionalInfoPublic', error);
+  return data ? { crp: data.crp || '', specialty: data.specialty || '', bio: data.bio || '' } : null;
 }
 // Usado para liberar cobrança digital (US-017) e nota fiscal (US-019) no futuro — ambas ainda não construídas.
 function hasCompleteFiscalData(profile){
@@ -602,7 +615,8 @@ export {
   loadBlocks, saveBlocks, blockId, loadSessions, saveSessions, sessionId,
   DEFAULT_SESSION_PRICE, formatCurrency,
   THEME_PALETTES, loadThemeColor, saveThemeColor, applyTheme,
-  TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile, hasCompleteFiscalData,
+  TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
+  loadProfessionalInfoPublic, hasCompleteFiscalData,
   defaultPricing, loadPricing, savePricing, getDefaultPrice,
   findBlockConflict, findSessionConflict, isWithinWorkingHours, checkSlotAvailability,
   isWithinAdvanceWindow, listAvailableSlotsForDate, toMinutes, weekdayKeyOf, rangesOverlap,
