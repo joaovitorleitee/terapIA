@@ -194,9 +194,9 @@ function App(){
         ))}
         <div className="sidebar-footer">
           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-            <IconLock size={12} /> <strong style={{color:'var(--ink-muted)'}}>MVP em validação</strong>
+            <IconLock size={12} /> <strong style={{color:'var(--ink-muted)'}}>Dados protegidos</strong>
           </div>
-          Protótipo interativo para validação com stakeholder. Sem persistência real de produção e sem dados de pacientes de verdade.
+          Suas informações são criptografadas e protegidas conforme a LGPD.
         </div>
       </aside>
 
@@ -212,7 +212,7 @@ function App(){
           <div className="account-menu-wrap">
             <button className="avatar" style={{width:30,height:30,fontSize:11,border:'none',cursor:'pointer'}} onClick={()=>setMenuOpen(o=>!o)}>{initials}</button>
             {menuOpen && (
-              <AccountMenu user={currentUser} onLogout={()=>logout('')} onSimulateExpiry={()=>logout('Sua sessão expirou por inatividade. Faça login novamente para continuar.')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onClose={()=>setMenuOpen(false)} />
+              <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onClose={()=>setMenuOpen(false)} />
             )}
           </div>
         </div>
@@ -243,17 +243,13 @@ function App(){
                 <IconChevronDown size={15} color="var(--ink-muted)" />
               </button>
               {menuOpen && (
-                <AccountMenu user={currentUser} onLogout={()=>logout('')} onSimulateExpiry={()=>logout('Sua sessão expirou por inatividade. Faça login novamente para continuar.')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onClose={()=>setMenuOpen(false)} />
+                <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onClose={()=>setMenuOpen(false)} />
               )}
             </div>
           </div>
         </div>
 
         <div className="content">
-          <div className="mvp-banner">
-            <IconSparkle size={14} />
-            <span>Você está vendo um artefato de validação. As telas serão preenchidas issue por issue, seguindo o backlog do Trello.</span>
-          </div>
           {renderContent()}
         </div>
       </div>
