@@ -34,24 +34,13 @@ function formatDateOnly(iso){
 async function loadPatients(){
   try{
     const r = await storage.get('patients');
-    let list = r && r.value ? JSON.parse(r.value) : [];
-    if(list.length === 0){
-      list = seedDemoPatients(list);
-      savePatients(list); // fire-and-forget: garante que a semente exista independente da tela que carregou primeiro
-    }
-    return list;
-  }catch(e){ return seedDemoPatients([]); }
+    return r && r.value ? JSON.parse(r.value) : [];
+  }catch(e){ return []; }
 }
 async function savePatients(patients){
   try{
     await storage.set('patients', JSON.stringify(patients));
   }catch(e){ /* falha de storage não deve travar a tela */ }
-}
-function seedDemoPatients(patients){
-  // Desativado: a partir da integração com Supabase Auth, os pacientes de demonstração (João/Ana)
-  // já existem de verdade no banco, vinculados ao UUID real da Marina — não faz mais sentido
-  // semear registros presos ao id fictício antigo ('demo-psi'), que nenhuma conta real usa.
-  return patients;
 }
 const patientId = () => 'p_' + Math.random().toString(36).slice(2, 10);
 
@@ -323,7 +312,7 @@ function downloadTextFallbackReceipt(receipt){
     `Status: ${receipt.status === 'cancelado' ? 'Cancelado' : 'Pago'}`,
     receipt.supersedes ? `Substitui recibo: ${receipt.supersedes}` : '',
     '',
-    `Emitido em ${formatDate(receipt.issuedAt)} — documento de demonstração gerado no MVP (TerapIA).`,
+    `Emitido em ${formatDate(receipt.issuedAt)} — documento gerado pelo sistema TerapIA.`,
   ].filter(Boolean);
   const blob = new Blob([lines.join('\n')], { type:'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -354,7 +343,7 @@ function generateReceiptPDF(receipt){
     if(receipt.supersedes) line('Substitui recibo', receipt.supersedes);
     doc.setFontSize(8.5);
     doc.setTextColor(140);
-    doc.text(`Emitido em ${formatDate(receipt.issuedAt)} — documento de demonstração gerado no MVP (TerapIA).`, 20, y + 8);
+    doc.text(`Emitido em ${formatDate(receipt.issuedAt)} — documento gerado pelo sistema TerapIA.`, 20, y + 8);
 
     // Download manual via Blob (mesmo mecanismo já comprovado na exportação de prontuário, US-010).
     // Evita o método .save() interno do jsPDF, que em alguns navegadores tenta abrir nova aba
@@ -424,7 +413,7 @@ function computeSlotStatus(date, time, ctx){
 export {
   SESSION_TIMEOUT_MS, EMAIL_RE, TERMS_VERSION,
   fetchProfile, hasValidConsent, formatDate, formatDateOnly,
-  loadPatients, savePatients, seedDemoPatients, patientId,
+  loadPatients, savePatients, patientId,
   WEEKDAYS, defaultAvailability, loadAvailability, saveAvailability,
   loadBlocks, saveBlocks, blockId, loadSessions, saveSessions, sessionId,
   DEFAULT_SESSION_PRICE, formatCurrency,
