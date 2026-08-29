@@ -7,7 +7,8 @@ import {
 } from './lib/dataStore.js';
 import { NAV_PSICOLOGO, NAV_PACIENTE, SECTION_META } from './lib/navConfig.js';
 import { IconSparkle, IconMail, IconChevronDown, IconClockRewind, IconLock } from './components/icons.jsx';
-import { LoginScreen, RegisterScreen, ForgotPasswordScreen, ConsentGateScreen } from './components/auth.jsx';
+import { LoginScreen, RegisterScreen, ForgotPasswordScreen, ConsentGateScreen, RoleSelectScreen } from './components/auth.jsx';
+import { TermsModal } from './components/shared.jsx';
 import { NotificationsBell, AccountMenu, ProfileSettingsModal } from './components/layout.jsx';
 import PainelPsicologo from './components/psicologo/Dashboard.jsx';
 import { PacientesPsicologo } from './components/psicologo/Patients.jsx';
@@ -21,7 +22,9 @@ import { MinhasTarefasPaciente } from './components/paciente/Tasks.jsx';
 import PagamentosPaciente from './components/paciente/Payments.jsx';
 
 function App(){
-  const [authView, setAuthView] = useState('login'); // login | register | forgot
+  const [authView, setAuthView] = useState('select-role'); // select-role | login | register | forgot
+  const [preselectedRole, setPreselectedRole] = useState('psicologo');
+  const [showRoleTerms, setShowRoleTerms] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [section, setSection] = useState('painel');
   const [loaded, setLoaded] = useState(false);
@@ -133,9 +136,17 @@ function App(){
             </div>
           </div>
         )}
-        {authView === 'login' && <LoginScreen onLogin={handleAuthed} goRegister={()=>setAuthView('register')} goForgot={()=>setAuthView('forgot')} />}
-        {authView === 'register' && <RegisterScreen onRegister={handleAuthed} goLogin={()=>setAuthView('login')} />}
+        {authView === 'select-role' && (
+          <RoleSelectScreen
+            onSelect={(role)=>{ setPreselectedRole(role); setAuthView('register'); }}
+            onLogin={()=>setAuthView('login')}
+            onShowTerms={()=>setShowRoleTerms(true)}
+          />
+        )}
+        {authView === 'login' && <LoginScreen onLogin={handleAuthed} goRegister={()=>setAuthView('select-role')} goForgot={()=>setAuthView('forgot')} />}
+        {authView === 'register' && <RegisterScreen onRegister={handleAuthed} goLogin={()=>setAuthView('login')} initialRole={preselectedRole} />}
         {authView === 'forgot' && <ForgotPasswordScreen goLogin={()=>setAuthView('login')} />}
+        {showRoleTerms && <TermsModal onClose={()=>setShowRoleTerms(false)} />}
       </React.Fragment>
     );
   }
