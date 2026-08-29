@@ -198,6 +198,39 @@ function applyTheme(key){
   root.setProperty('--primary-soft', p.primarySoft);
 }
 
+/* ================= Perfil profissional e dados fiscais ================= */
+const TAX_REGIMES = ['Autônomo (RPA)', 'MEI', 'Simples Nacional', 'Lucro Presumido', 'Outro'];
+function defaultProfessionalProfile(){
+  return { crp:'', specialty:'', bio:'', cpfCnpj:'', taxRegime:'', city:'', bankName:'', bankAgency:'', bankAccount:'', pixKey:'' };
+}
+function rowToProfessionalProfile(r){
+  return {
+    crp: r.crp || '', specialty: r.specialty || '', bio: r.bio || '',
+    cpfCnpj: r.cpf_cnpj || '', taxRegime: r.tax_regime || '', city: r.city || '',
+    bankName: r.bank_name || '', bankAgency: r.bank_agency || '', bankAccount: r.bank_account || '', pixKey: r.pix_key || '',
+  };
+}
+async function loadProfessionalProfile(psicologoId){
+  const { data, error } = await supabase.from('professional_profile').select('*').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadProfessionalProfile', error);
+  if(!data) return defaultProfessionalProfile();
+  return rowToProfessionalProfile(data);
+}
+async function saveProfessionalProfile(psicologoId, profile){
+  const row = {
+    psicologo_id: psicologoId, crp: profile.crp || null, specialty: profile.specialty || null, bio: profile.bio || null,
+    cpf_cnpj: profile.cpfCnpj || null, tax_regime: profile.taxRegime || null, city: profile.city || null,
+    bank_name: profile.bankName || null, bank_agency: profile.bankAgency || null,
+    bank_account: profile.bankAccount || null, pix_key: profile.pixKey || null, updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('professional_profile').upsert(row, { onConflict:'psicologo_id' });
+  logDbError('saveProfessionalProfile', error);
+}
+// Usado para liberar cobrança digital (US-017) e nota fiscal (US-019) no futuro — ambas ainda não construídas.
+function hasCompleteFiscalData(profile){
+  return !!(profile && profile.cpfCnpj && profile.taxRegime && profile.city);
+}
+
 /* ================= Preços ================= */
 function defaultPricing(){ return { presencial: DEFAULT_SESSION_PRICE, online: DEFAULT_SESSION_PRICE }; }
 async function loadPricing(psicologoId){
@@ -569,6 +602,7 @@ export {
   loadBlocks, saveBlocks, blockId, loadSessions, saveSessions, sessionId,
   DEFAULT_SESSION_PRICE, formatCurrency,
   THEME_PALETTES, loadThemeColor, saveThemeColor, applyTheme,
+  TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile, hasCompleteFiscalData,
   defaultPricing, loadPricing, savePricing, getDefaultPrice,
   findBlockConflict, findSessionConflict, isWithinWorkingHours, checkSlotAvailability,
   isWithinAdvanceWindow, listAvailableSlotsForDate, toMinutes, weekdayKeyOf, rangesOverlap,
