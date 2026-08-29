@@ -155,9 +155,6 @@ function LoginScreen({ onLogin, goRegister, goForgot }){
       <div className="auth-footer-link">
         Ainda não tem conta? <button className="btn-link" onClick={goRegister}>Cadastre-se</button>
       </div>
-      <div className="field hint" style={{marginTop:18, textAlign:'center'}}>
-        Contas de demonstração (reais, Supabase Auth): marina@terapia.demo (psicólogo) · joao@terapia.demo (paciente, já consentiu) · ana@terapia.demo (paciente, sem consentimento) — senha 123456
-      </div>
     </AuthShell>
   );
 }
@@ -306,7 +303,7 @@ function ForgotPasswordScreen({ goLogin }){
       {sent ? (
         <div className="alert alert-success">
           <IconMail size={16} />
-          <span>Se este e-mail estiver cadastrado, enviamos um link de redefinição. (O link só funcionará corretamente após publicarmos o site em um domínio de produção.)</span>
+          <span>Se este e-mail estiver cadastrado, enviamos um link de redefinição.</span>
         </div>
       ) : (
         <div>

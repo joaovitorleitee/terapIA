@@ -6,9 +6,8 @@ function EmptyState({ builtBy }){
   return (
     <div className="empty-state">
       <div className="icon-wrap"><IconSparkle size={26} /></div>
-      <h2>Ainda não construído</h2>
-      <p>Esta área faz parte do MVP e será implementada nas próximas etapas, seguindo a ordem combinada no backlog.</p>
-      {builtBy && <span className="tag">Chega com {builtBy}</span>}
+      <h2>Em breve</h2>
+      <p>Esta área ainda está sendo preparada.</p>
     </div>
   );
 }
@@ -45,7 +44,7 @@ function TagInput({ tags, onChange }){
 function TermsBody(){
   return (
     <React.Fragment>
-      <p>Este é um resumo de demonstração para o protótipo do MVP. A TerapIA trata dados de saúde com base no seu consentimento explícito, aplica controle de acesso por papel e nunca expõe notas privadas do psicólogo ao paciente. A versão final e juridicamente válida destes termos será redigida antes do lançamento em produção (Fase 2).</p>
+      <p>A TerapIA trata dados de saúde com base no seu consentimento explícito, aplica controle de acesso por papel e nunca expõe notas privadas do psicólogo ao paciente. Este é um resumo; a versão completa dos termos está disponível mediante solicitação.</p>
       <p>Ao aceitar, você concorda com o tratamento dos seus dados administrativos para viabilizar agendamento, acompanhamento terapêutico e cobrança, conforme a LGPD. Você pode consultar o status do seu consentimento a qualquer momento na sua área.</p>
     </React.Fragment>
   );

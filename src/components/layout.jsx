@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { loadNotificationsFor, saveNotificationsFor, loadThemeColor, saveThemeColor, applyTheme, THEME_PALETTES, formatDate } from '../lib/dataStore.js';
-import { IconBell, IconEdit, IconClockRewind, IconLogOut, IconCheckCircle } from './icons.jsx';
+import { IconBell, IconEdit, IconLogOut, IconCheckCircle } from './icons.jsx';
 
 function NotificationsBell({ ownerId, namespace='notifications' }){
   const [open, setOpen] = useState(false);
@@ -102,7 +102,7 @@ function ProfileSettingsModal({ psicologoId, onClose }){
 }
 
 
-function AccountMenu({ user, onLogout, onSimulateExpiry, onOpenProfile, onClose }){
+function AccountMenu({ user, onLogout, onOpenProfile, onClose }){
   React.useEffect(() => {
     const close = (e) => {
       if(e.target && e.target.closest && e.target.closest('.account-menu-wrap')) return;
@@ -122,9 +122,6 @@ function AccountMenu({ user, onLogout, onSimulateExpiry, onOpenProfile, onClose 
           <IconEdit size={15} /> Meu perfil
         </button>
       )}
-      <button className="menu-item" onClick={onSimulateExpiry}>
-        <IconClockRewind size={15} /> Simular expiração de sessão (teste)
-      </button>
       <button className="menu-item danger" onClick={onLogout}>
         <IconLogOut size={15} /> Sair
       </button>
