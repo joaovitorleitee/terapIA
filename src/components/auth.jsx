@@ -39,6 +39,55 @@ function ConsentGateScreen({ user, onAccept, onLogout }){
   );
 }
 
+/* ---------- Seleção de perfil (nova tela inicial) ---------- */
+function RoleSelectScreen({ onSelect, onLogin, onShowTerms }){
+  return (
+    <div className="role-select-page">
+      <div className="role-select-wrap">
+        <div className="auth-brand" style={{justifyContent:'center', marginBottom:22}}>
+          <div className="brand-mark"><IconSparkleForSelect /></div>
+          <div className="brand-name" style={{fontSize:22}}>TerapIA</div>
+        </div>
+        <h1 className="role-select-title">Bem-vindo(a) de volta</h1>
+        <p className="role-select-subtitle">Gestão de consultório e acompanhamento terapêutico. O cuidado do psicólogo e o acompanhamento do paciente, no mesmo lugar.</p>
+
+        <div className="role-cards">
+          <button type="button" className="role-card primary" onClick={()=>onSelect('psicologo')}>
+            <span className="role-card-icon"><IconUsers size={20} color="#F4F6F2" /></span>
+            <span className="role-card-eyebrow">Área profissional</span>
+            <span className="role-card-title">Sou psicólogo(a)</span>
+            <span className="role-card-desc">Agenda, prontuário, sessões, tarefas de casa e financeiro do consultório.</span>
+            <span className="role-card-go">Entrar como psicólogo(a) →</span>
+          </button>
+
+          <button type="button" className="role-card secondary" onClick={()=>onSelect('paciente')}>
+            <span className="role-card-icon secondary"><IconHome size={20} /></span>
+            <span className="role-card-eyebrow">Área do paciente</span>
+            <span className="role-card-title">Sou paciente</span>
+            <span className="role-card-desc">Veja suas sessões, acompanhe tarefas e consulte pagamentos.</span>
+            <span className="role-card-go">Entrar como paciente →</span>
+          </button>
+        </div>
+
+        <div className="role-select-already">Já tem conta? <button type="button" className="btn-link" onClick={onLogin}>Entrar</button></div>
+
+        <div className="role-select-footer">
+          <button type="button" onClick={onShowTerms}>Política de Privacidade</button>
+          <span className="sep">·</span>
+          <button type="button" onClick={onShowTerms}>Termos de Uso</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function IconSparkleForSelect(){
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#F4F6F2" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3.5c.6 3 2 4.4 5 5-3 .6-4.4 2-5 5-.6-3-2-4.4-5-5 3-.6 4.4-2 5-5Z"/>
+    </svg>
+  );
+}
+
 /* ---------- Auth screens ---------- */
 
 
@@ -114,8 +163,8 @@ function LoginScreen({ onLogin, goRegister, goForgot }){
 }
 
 
-function RegisterScreen({ onRegister, goLogin }){
-  const [role, setRole] = useState('psicologo');
+function RegisterScreen({ onRegister, goLogin, initialRole }){
+  const [role, setRole] = useState(initialRole || 'psicologo');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -281,4 +330,4 @@ function ForgotPasswordScreen({ goLogin }){
 /* ---------- Patient form modal (US-003) ---------- */
 
 
-export { ConsentGateScreen, LoginScreen, RegisterScreen, ForgotPasswordScreen };
+export { ConsentGateScreen, LoginScreen, RegisterScreen, ForgotPasswordScreen, RoleSelectScreen };
