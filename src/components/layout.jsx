@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   loadNotificationsFor, saveNotificationsFor, loadThemeColor, saveThemeColor, applyTheme, THEME_PALETTES, formatDate,
   TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
+  loadDataRightsConfig, saveDataRightsConfig, exportMyData, loadMyDeletionRequests, createDeletionRequest,
 } from '../lib/dataStore.js';
-import { IconBell, IconEdit, IconLogOut, IconCheckCircle } from './icons.jsx';
+import { IconBell, IconEdit, IconLogOut, IconCheckCircle, IconShield } from './icons.jsx';
 
 function NotificationsBell({ ownerId, namespace='notifications' }){
   const [open, setOpen] = useState(false);
@@ -197,7 +198,117 @@ function ProfileSettingsModal({ psicologoId, onClose }){
 }
 
 
-function AccountMenu({ user, onLogout, onOpenProfile, onClose }){
+function PrivacyModal({ currentUser, patientRecord, psicologoId, onClose }){
+  const [slaConfig, setSlaConfig] = useState({ responseSlaDays: 15 });
+  const [myRequests, setMyRequests] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+
+  const refresh = React.useCallback(async () => {
+    const targetPsicologoId = currentUser.role === 'paciente' ? psicologoId : null;
+    const [cfg, reqs] = await Promise.all([
+      targetPsicologoId ? loadDataRightsConfig(targetPsicologoId) : Promise.resolve({ responseSlaDays: 15 }),
+      loadMyDeletionRequests(currentUser.id),
+    ]);
+    setSlaConfig(cfg);
+    setMyRequests(reqs);
+    setLoaded(true);
+  }, [currentUser.id, currentUser.role, psicologoId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const doExport = async () => {
+    setExporting(true);
+    try{ await exportMyData(currentUser, patientRecord); }
+    finally{ setExporting(false); }
+  };
+
+  const pendingRequest = myRequests.find(r => r.status === 'pendente');
+
+  const doRequestDeletion = async () => {
+    setRequesting(true);
+    try{
+      await createDeletionRequest({
+        requesterId: currentUser.id, requesterRole: currentUser.role,
+        psicologoId: currentUser.role === 'paciente' ? psicologoId : null,
+        patientId: currentUser.role === 'paciente' && patientRecord ? patientRecord.id : null,
+      });
+      await refresh();
+      setConfirmingDelete(false);
+    } finally { setRequesting(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box form-modal" style={{maxHeight:'85vh', overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <h3>Meus dados e privacidade</h3>
+        <div className="field hint" style={{marginBottom:16}}>Seus direitos como titular de dados, conforme a LGPD.</div>
+
+        <div className="panel">
+          <h3>Exportar meus dados</h3>
+          <div className="panel-sub">Baixe uma cópia dos seus dados administrativos {currentUser.role==='paciente' ? '(sessões, tarefas e cobranças — nunca as notas privadas do seu psicólogo)' : 'de cadastro'}.</div>
+          <button className="btn-primary" type="button" style={{width:'auto', padding:'10px 20px'}} onClick={doExport} disabled={exporting}>
+            {exporting && <span className="spinner"/>}
+            {exporting ? 'Gerando…' : 'Baixar meus dados'}
+          </button>
+        </div>
+
+        <div className="panel">
+          <h3>Excluir ou anonimizar minha conta</h3>
+          {loaded && currentUser.role === 'paciente' && (
+            <div className="panel-sub">
+              Prazo de resposta configurado pelo seu psicólogo: até {slaConfig.responseSlaDays} dias. Sessões, cobranças e recibos já
+              emitidos são mantidos pelo prazo legal de retenção fiscal — apenas seus dados de identificação (nome, e-mail, telefone, CPF,
+              endereço) são anonimizados.
+            </div>
+          )}
+          {loaded && currentUser.role === 'psicologo' && (
+            <div className="panel-sub">Sua solicitação será registrada; a exclusão da conta de acesso exige um passo manual de suporte, já que envolve segurança elevada.</div>
+          )}
+
+          {pendingRequest ? (
+            <div className="alert alert-danger">Você já tem uma solicitação pendente, enviada em {formatDate(pendingRequest.requestedAt)}. Aguarde a resposta.</div>
+          ) : confirmingDelete ? (
+            <div>
+              <div className="alert alert-danger">Essa ação não pode ser desfeita pelo próprio titular depois de concluída. Tem certeza?</div>
+              <div className="modal-actions">
+                <button className="btn-secondary" type="button" onClick={()=>setConfirmingDelete(false)}>Cancelar</button>
+                <button className="btn-primary" type="button" style={{background:'var(--danger)'}} onClick={doRequestDeletion} disabled={requesting}>
+                  {requesting && <span className="spinner"/>}
+                  {requesting ? 'Enviando…' : 'Confirmar solicitação'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn-secondary" type="button" style={{width:'auto', padding:'10px 20px', color:'var(--danger)'}} onClick={()=>setConfirmingDelete(true)}>
+              Solicitar exclusão/anonimização
+            </button>
+          )}
+
+          {myRequests.length > 0 && (
+            <div style={{marginTop:16}}>
+              <div className="field hint" style={{marginBottom:8}}>Histórico de solicitações:</div>
+              {myRequests.map(r => (
+                <div className="mini-session-row" key={r.id}>
+                  <span>{formatDate(r.requestedAt)} — {r.status === 'pendente' ? 'Pendente' : r.status === 'concluida' ? 'Concluída' : 'Cancelada'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-actions" style={{marginTop:12}}>
+          <button className="btn-secondary" type="button" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function AccountMenu({ user, onLogout, onOpenProfile, onOpenPrivacy, onClose }){
   React.useEffect(() => {
     const close = (e) => {
       if(e.target && e.target.closest && e.target.closest('.account-menu-wrap')) return;
@@ -217,6 +328,9 @@ function AccountMenu({ user, onLogout, onOpenProfile, onClose }){
           <IconEdit size={15} /> Meu perfil
         </button>
       )}
+      <button className="menu-item" onClick={onOpenPrivacy}>
+        <IconShield size={15} /> Meus dados e privacidade
+      </button>
       <button className="menu-item danger" onClick={onLogout}>
         <IconLogOut size={15} /> Sair
       </button>
@@ -225,4 +339,4 @@ function AccountMenu({ user, onLogout, onOpenProfile, onClose }){
 }
 
 
-export { NotificationsBell, ProfileSettingsModal, AccountMenu };
+export { NotificationsBell, ProfileSettingsModal, AccountMenu, PrivacyModal };
