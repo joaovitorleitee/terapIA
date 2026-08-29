@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalInfoPublic, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { TermsModal } from '../shared.jsx';
 
 function InicioPaciente({ user }){
@@ -17,7 +17,7 @@ function InicioPaciente({ user }){
       const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
       if(record){
         const [sessions, tasks, charges, prof] = await Promise.all([
-          loadSessions(), loadTasks(), loadCharges(), loadProfessionalProfile(record.psicologoId),
+          loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId),
         ]);
         const mySessions = sessions
           .filter(s => s.patientId === record.id && s.date >= todayStr() && ['confirmada','pendente','agendada'].includes(s.status))
