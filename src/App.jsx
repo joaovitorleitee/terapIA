@@ -208,7 +208,7 @@ function App(){
         </div>
         <div style={{display:'flex', alignItems:'center'}}>
           {role === 'psicologo' && <NotificationsBell ownerId={currentUser.id} namespace="notifications" />}
-          {role === 'paciente' && <NotificationsBell ownerId={currentUser.email.toLowerCase()} namespace="patientNotifications" />}
+          {role === 'paciente' && <NotificationsBell ownerId={currentUser.id} namespace="patientNotifications" />}
           <div className="account-menu-wrap">
             <button className="avatar" style={{width:30,height:30,fontSize:11,border:'none',cursor:'pointer'}} onClick={()=>setMenuOpen(o=>!o)}>{initials}</button>
             {menuOpen && (
@@ -236,7 +236,7 @@ function App(){
           </div>
           <div className="topbar-right">
             {role === 'psicologo' && <NotificationsBell ownerId={currentUser.id} namespace="notifications" />}
-          {role === 'paciente' && <NotificationsBell ownerId={currentUser.email.toLowerCase()} namespace="patientNotifications" />}
+          {role === 'paciente' && <NotificationsBell ownerId={currentUser.id} namespace="patientNotifications" />}
             <div className="account-menu-wrap">
               <button onClick={()=>setMenuOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:8,background:'none',border:'none',cursor:'pointer'}}>
                 <div className="avatar">{initials}</div>
