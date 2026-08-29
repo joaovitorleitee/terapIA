@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { loadPatients, loadSessions, loadTasks, loadCharges, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { TermsModal } from '../shared.jsx';
 
 function InicioPaciente({ user }){
@@ -9,13 +9,16 @@ function InicioPaciente({ user }){
   const [activeTasks, setActiveTasks] = useState(0);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [openCharges, setOpenCharges] = useState(0);
+  const [professional, setProfessional] = useState(null);
 
   useEffect(() => {
     (async () => {
       const allPatients = await loadPatients();
       const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
       if(record){
-        const [sessions, tasks, charges] = await Promise.all([loadSessions(), loadTasks(), loadCharges()]);
+        const [sessions, tasks, charges, prof] = await Promise.all([
+          loadSessions(), loadTasks(), loadCharges(), loadProfessionalProfile(record.psicologoId),
+        ]);
         const mySessions = sessions
           .filter(s => s.patientId === record.id && s.date >= todayStr() && ['confirmada','pendente','agendada'].includes(s.status))
           .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
@@ -25,6 +28,7 @@ function InicioPaciente({ user }){
         setCompletedTasks(myTasks.filter(t => t.status === 'concluida').length);
         const myCharges = charges.filter(c => c.patientId === record.id && (c.status === 'pendente' || c.status === 'parcial'));
         setOpenCharges(myCharges.length);
+        if(prof && (prof.specialty || prof.bio)) setProfessional(prof);
       }
       setLoading(false);
     })();
@@ -56,6 +60,13 @@ function InicioPaciente({ user }){
           <div className="stat-value">{loading ? '—' : openCharges}</div>
         </div>
       </div>
+      {professional && (
+        <div className="stat-card" style={{marginTop:16}}>
+          <div className="stat-label" style={{marginBottom:6}}>Sobre seu psicólogo(a)</div>
+          {professional.specialty && <div style={{fontSize:13, fontWeight:600, marginBottom:4}}>{professional.specialty}</div>}
+          {professional.bio && <div style={{fontSize:13, color:'var(--ink-muted)', lineHeight:1.6}}>{professional.bio}</div>}
+        </div>
+      )}
       <div className="stat-card" style={{marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
         <div>
           <div className="stat-label" style={{marginBottom:4}}>Meu consentimento</div>
@@ -69,8 +80,5 @@ function InicioPaciente({ user }){
     </div>
   );
 }
-
-/* ---------- Auth real via Supabase (US-001, produção) ---------- */
-
 
 export default InicioPaciente;
