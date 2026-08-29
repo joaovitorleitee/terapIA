@@ -90,7 +90,7 @@ function TaskFormModal({ psicologoId, patients, editingTask, onClose, onSave }){
           </div>
         </div>
         {patients.length === 0 && (
-          <div className="alert alert-danger">Cadastre um paciente ativo antes de criar tarefas (US-003).</div>
+          <div className="alert alert-danger">Cadastre um paciente ativo antes de criar tarefas.</div>
         )}
         <div className="modal-actions">
           <button className="btn-secondary" type="button" onClick={onClose}>Cancelar</button>

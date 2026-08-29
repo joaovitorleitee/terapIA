@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient.js';
-import { loadPatients, savePatients, seedDemoPatients, patientId, EMAIL_RE, TERMS_VERSION, formatDateOnly } from '../../lib/dataStore.js';
+import { loadPatients, savePatients, patientId, EMAIL_RE, TERMS_VERSION, formatDateOnly } from '../../lib/dataStore.js';
 import { IconPlus, IconSearch, IconEdit, IconArchive, IconUserPlus } from '../icons.jsx';
 
 function PatientFormModal({ patient, onClose, onSave }){

@@ -81,7 +81,7 @@ function WeeklyHoursPanel({ availability, onChange }){
                  onChange={e=>onChange({ ...availability, maxAdvanceDays: Number(e.target.value)||0 })} />
         </div>
       </div>
-      <div className="field hint">A antecedência acima será aplicada ao agendamento do paciente (US-007).</div>
+      <div className="field hint">A antecedência acima será aplicada ao agendamento feito pelo paciente.</div>
     </div>
   );
 }
@@ -174,95 +174,11 @@ function BlocksPanel({ psicologoId, blocks, onAdd, onRemove }){
 }
 
 
-function TestSlotPanel({ psicologoId, availability, blocks, sessions, patients, onSessionCreated, onSessionRemoved }){
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('09:00');
-  const [duration, setDuration] = useState(availability.defaultDurationMin);
-  const [patientIdSel, setPatientIdSel] = useState(patients[0]?.id || '');
-  const [result, setResult] = useState(null);
-
-  const check = () => {
-    if(!date){ setResult({ available:false, reason:'Escolha uma data.' }); return; }
-    setResult(checkSlotAvailability({ availability, blocks, sessions, psicologoId, date, startTime:time, durationMin:Number(duration)||0 }));
-  };
-
-  const confirm = async () => {
-    if(!patientIdSel){ setResult({ available:false, reason:'Cadastre um paciente antes de criar a sessão de teste (US-003).' }); return; }
-    const newSession = {
-      id: sessionId(), psicologoId, patientId: patientIdSel, date, startTime: time,
-      durationMin: Number(duration)||0, status:'confirmada', valor: DEFAULT_SESSION_PRICE, createdAt: new Date().toISOString(),
-    };
-    await onSessionCreated(newSession);
-    setResult({ available:false, reason:'Sessão de teste criada — o horário agora está ocupado. Tente verificar o mesmo horário de novo para ver o bloqueio.' });
-  };
-
-  const futureTestSessions = sessions
-    .filter(s => s.psicologoId === psicologoId && s.status !== 'cancelada')
-    .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
-
-  return (
-    <div className="panel">
-      <h3>Verificar disponibilidade</h3>
-      <div className="panel-sub">Use esta ferramenta para testar o motor de conflitos agora — a visualização completa em calendário chega em US-005.</div>
-      <div className="inline-fields">
-        <div className="field">
-          <label>Data</label>
-          <input type="date" value={date} onChange={e=>{setDate(e.target.value); setResult(null);}} />
-        </div>
-        <div className="field">
-          <label>Horário</label>
-          <input type="time" value={time} onChange={e=>{setTime(e.target.value); setResult(null);}} />
-        </div>
-        <div className="field">
-          <label>Duração (min)</label>
-          <input type="number" min="10" step="5" value={duration} onChange={e=>{setDuration(e.target.value); setResult(null);}} />
-        </div>
-        <div className="field">
-          <label>Paciente (para criar a sessão de teste)</label>
-          <select value={patientIdSel} onChange={e=>setPatientIdSel(e.target.value)}>
-            <option value="">Selecione</option>
-            {patients.map(p => <option key={p.id} value={p.id}>{p.socialName || p.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <button className="btn-primary" type="button" style={{width:'auto', padding:'10px 20px'}} onClick={check}>Verificar disponibilidade</button>
-
-      {result && (
-        <div className={'test-result '+(result.available?'ok':'no')}>
-          {result.available ? <IconCheckCircle size={17}/> : <IconXCircle size={17}/>}
-          <div>
-            <div>{result.available ? 'Horário disponível.' : result.reason}</div>
-            {result.available && (
-              <button className="btn-link" style={{marginTop:6}} onClick={confirm}>Confirmar sessão de teste neste horário</button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {futureTestSessions.length > 0 && (
-        <div style={{marginTop:18}}>
-          <div className="field hint" style={{marginBottom:6}}>Sessões já confirmadas (ocupam a agenda):</div>
-          {futureTestSessions.map(s => {
-            const p = patients.find(pp => pp.id === s.patientId);
-            return (
-              <div className="mini-session-row" key={s.id}>
-                <span>{formatDateOnly(s.date)} às {s.startTime} · {p ? (p.socialName||p.name) : 'Paciente removido'} · {s.durationMin} min</span>
-                <button className="icon-btn" title="Cancelar sessão de teste" onClick={()=>onSessionRemoved(s.id)}><IconTrash size={14}/></button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 function CancelPolicyPanel({ policy, onChange }){
   return (
     <div className="panel">
       <h3>Política de cancelamento</h3>
-      <div className="panel-sub">Esta política será mostrada ao paciente antes de confirmar um cancelamento (US-008) e define se há cobrança.</div>
+      <div className="panel-sub">Esta política será mostrada ao paciente antes de confirmar um cancelamento e define se há cobrança.</div>
       <div className="inline-fields">
         <div className="field">
           <label>Prazo mínimo para cancelar sem cobrança (horas)</label>
@@ -488,7 +404,7 @@ function NewSessionModal({ psicologoId, availability, blocks, sessions, patients
         )}
 
         {patients.length === 0 && (
-          <div className="alert alert-danger">Cadastre um paciente ativo antes de criar sessões (US-003).</div>
+          <div className="alert alert-danger">Cadastre um paciente ativo antes de criar sessões.</div>
         )}
         <div className="modal-actions">
           <button className="btn-secondary" type="button" onClick={onClose}>Cancelar</button>
@@ -524,7 +440,7 @@ function SessionPopover({ session, patient, onClose, onStatusChange }){
           <div className="alert alert-danger" style={{marginBottom:10, fontSize:11.5}}>Horário ainda ocupado — aguardando liberação manual.</div>
         )}
         {session.status === 'realizada' && (
-          <div className="field hint" style={{marginBottom:10}}>Pronta para gerar cobrança e nota fiscal quando o Financeiro (US-014/015) estiver disponível.</div>
+          <div className="field hint" style={{marginBottom:10}}>Pronta para gerar cobrança em Financeiro.</div>
         )}
         <div className="sp-actions">
           {session.status === 'agendada' && (
@@ -887,12 +803,6 @@ function AgendaPsicologo({ psicologoId }){
     await saveSessions(updated);
     setSessions(updated.filter(x => x.psicologoId === psicologoId));
   };
-  const removeSession = async (id) => {
-    const all = await loadSessions();
-    const updated = all.filter(s => s.id !== id);
-    await saveSessions(updated);
-    setSessions(updated.filter(x => x.psicologoId === psicologoId));
-  };
 
   const updateSession = async (id, patch) => {
     const all = await loadSessions();
@@ -920,8 +830,6 @@ function AgendaPsicologo({ psicologoId }){
           <BookingModePanel availability={availability} onChange={persistAvailability} />
           <WeeklyHoursPanel availability={availability} onChange={persistAvailability} />
           <BlocksPanel psicologoId={psicologoId} blocks={blocks} onAdd={addBlock} onRemove={removeBlock} />
-          <TestSlotPanel psicologoId={psicologoId} availability={availability} blocks={blocks} sessions={sessions}
-                         patients={patients} onSessionCreated={createSession} onSessionRemoved={removeSession} />
         </div>
       )}
       {tab === 'cancelamento' && (
