@@ -1,10 +1,13 @@
 import { supabase } from './supabaseClient.js';
-import storage from './storage.js';
 import { jsPDF } from 'jspdf';
 
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000; // 20 min — inatividade (camada extra de segurança no cliente)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TERMS_VERSION = 'v1.0'; // versão vigente dos termos/política de privacidade (US-002)
+const TERMS_VERSION = 'v1.0'; // versão vigente dos termos/política de privacidade
+
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+  const r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8); return v.toString(16);
+}));
 
 async function fetchProfile(userId){
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -29,22 +32,43 @@ function formatDateOnly(iso){
     return `${d}/${m}/${y}`;
   }catch(e){ return iso; }
 }
+function logDbError(where, error){
+  if(error) console.error(`[dataStore] ${where}:`, error.message || error);
+}
 
-/* ---------- Patients storage (US-003) — mock, sem backend ---------- */
+/* ================= Pacientes ================= */
+function rowToPatient(r){
+  return {
+    id: r.id, psicologoId: r.psicologo_id, linkedUserId: r.linked_user_id,
+    name: r.name, socialName: r.social_name || '', email: r.email, phone: r.phone || '',
+    birthDate: r.birth_date || '', cpf: r.cpf || '', emergencyContact: r.emergency_contact || '',
+    address: r.address || '', notes: r.notes || '',
+    customPrice: r.custom_price === null ? '' : r.custom_price,
+    status: r.status, createdAt: r.created_at,
+  };
+}
+function patientToRow(p){
+  return {
+    id: p.id, psicologo_id: p.psicologoId, name: p.name, social_name: p.socialName || null,
+    email: p.email, phone: p.phone || null, birth_date: p.birthDate || null, cpf: p.cpf || null,
+    emergency_contact: p.emergencyContact || null, address: p.address || null, notes: p.notes || null,
+    custom_price: (p.customPrice === '' || p.customPrice === undefined || p.customPrice === null) ? null : Number(p.customPrice),
+    status: p.status || 'ativo',
+  };
+}
 async function loadPatients(){
-  try{
-    const r = await storage.get('patients');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('patients').select('*').order('created_at', { ascending:false });
+  logDbError('loadPatients', error);
+  return data ? data.map(rowToPatient) : [];
 }
 async function savePatients(patients){
-  try{
-    await storage.set('patients', JSON.stringify(patients));
-  }catch(e){ /* falha de storage não deve travar a tela */ }
+  if(!patients.length) return;
+  const { error } = await supabase.from('patients').upsert(patients.map(patientToRow), { onConflict:'id' });
+  logDbError('savePatients', error);
 }
-const patientId = () => 'p_' + Math.random().toString(36).slice(2, 10);
+const patientId = uuid;
 
-/* ---------- Availability, blocks & sessions (US-006) — motor de conflitos ---------- */
+/* ================= Disponibilidade, bloqueios e sessões — motor de conflitos ================= */
 const WEEKDAYS = [
   { key:'dom', label:'Domingo' }, { key:'seg', label:'Segunda' }, { key:'ter', label:'Terça' },
   { key:'qua', label:'Quarta' }, { key:'qui', label:'Quinta' }, { key:'sex', label:'Sexta' }, { key:'sab', label:'Sábado' },
@@ -59,41 +83,96 @@ function defaultAvailability(){
   return { weeklyHours, defaultDurationMin:50, bufferMin:10, minAdvanceHours:24, maxAdvanceDays:60, bookingMode:'auto' };
 }
 async function loadAvailability(psicologoId){
-  try{
-    const r = await storage.get('availability:'+psicologoId);
-    return r && r.value ? JSON.parse(r.value) : defaultAvailability();
-  }catch(e){ return defaultAvailability(); }
+  const { data, error } = await supabase.from('availability').select('*').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadAvailability', error);
+  if(!data) return defaultAvailability();
+  return {
+    weeklyHours: data.weekly_hours, defaultDurationMin: data.default_duration_min, bufferMin: data.buffer_min,
+    minAdvanceHours: data.min_advance_hours, maxAdvanceDays: data.max_advance_days, bookingMode: data.booking_mode,
+  };
 }
 async function saveAvailability(psicologoId, availability){
-  try{ await storage.set('availability:'+psicologoId, JSON.stringify(availability)); }catch(e){}
+  const row = {
+    psicologo_id: psicologoId, weekly_hours: availability.weeklyHours,
+    default_duration_min: availability.defaultDurationMin, buffer_min: availability.bufferMin,
+    min_advance_hours: availability.minAdvanceHours, max_advance_days: availability.maxAdvanceDays,
+    booking_mode: availability.bookingMode, updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('availability').upsert(row, { onConflict:'psicologo_id' });
+  logDbError('saveAvailability', error);
+}
+
+function rowToBlock(r){
+  return { id:r.id, psicologoId:r.psicologo_id, type:r.type, date:r.date, startDate:r.start_date, endDate:r.end_date, startTime:r.start_time, endTime:r.end_time, label:r.label };
+}
+function blockToRow(b){
+  return {
+    id:b.id, psicologo_id:b.psicologoId, type:b.type, date:b.date || null,
+    start_date:b.startDate || null, end_date:b.endDate || null,
+    start_time:b.startTime || null, end_time:b.endTime || null, label:b.label || null,
+  };
 }
 async function loadBlocks(){
-  try{
-    const r = await storage.get('blocks');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('blocks').select('*');
+  logDbError('loadBlocks', error);
+  return data ? data.map(rowToBlock) : [];
 }
 async function saveBlocks(blocks){
-  try{ await storage.set('blocks', JSON.stringify(blocks)); }catch(e){}
+  // Sincroniza a lista inteira: cria/atualiza os que existem, remove do banco os que saíram da lista
+  // (é a única entidade do sistema com remoção real, por isso o diff explícito).
+  const existing = await loadBlocks();
+  const keepIds = new Set(blocks.map(b => b.id));
+  const toDelete = existing.filter(e => !keepIds.has(e.id)).map(e => e.id);
+  if(blocks.length){
+    const { error } = await supabase.from('blocks').upsert(blocks.map(blockToRow), { onConflict:'id' });
+    logDbError('saveBlocks upsert', error);
+  }
+  if(toDelete.length){
+    const { error } = await supabase.from('blocks').delete().in('id', toDelete);
+    logDbError('saveBlocks delete', error);
+  }
+}
+
+function rowToSession(r){
+  return {
+    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, date:r.date, startTime:r.start_time,
+    durationMin:r.duration_min, modalidade:r.modalidade, status:r.status, valor: Number(r.valor),
+    reason:r.reason, cancelledAt:r.cancelled_at, cancelledBy:r.cancelled_by, pendingRelease:r.pending_release,
+    isLateCancel: r.is_late_cancel, chargeType:r.charge_type, chargePercent:r.charge_percent,
+    rescheduledAt:r.rescheduled_at, rescheduledBy:r.rescheduled_by, rescheduledToId:r.rescheduled_to_id,
+    rescheduledFromId:r.rescheduled_from_id, createdAt:r.created_at,
+  };
+}
+function sessionToRow(s){
+  return {
+    id:s.id, psicologo_id:s.psicologoId, patient_id:s.patientId, date:s.date, start_time:s.startTime,
+    duration_min:s.durationMin, modalidade:s.modalidade || 'Presencial', status:s.status || 'confirmada',
+    valor:s.valor || 0, reason:s.reason || null, cancelled_at:s.cancelledAt || null, cancelled_by:s.cancelledBy || null,
+    pending_release: !!s.pendingRelease, is_late_cancel: s.isLateCancel ?? null,
+    charge_type: s.chargeType || null, charge_percent: s.chargePercent ?? null,
+    rescheduled_at:s.rescheduledAt || null, rescheduled_by:s.rescheduledBy || null,
+    rescheduled_to_id:s.rescheduledToId || null, rescheduled_from_id:s.rescheduledFromId || null,
+  };
 }
 async function loadSessions(){
-  try{
-    const r = await storage.get('sessions');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('sessions').select('*');
+  logDbError('loadSessions', error);
+  return data ? data.map(rowToSession) : [];
 }
 async function saveSessions(sessions){
-  try{ await storage.set('sessions', JSON.stringify(sessions)); }catch(e){}
+  if(!sessions.length) return;
+  const { error } = await supabase.from('sessions').upsert(sessions.map(sessionToRow), { onConflict:'id' });
+  logDbError('saveSessions', error);
 }
-const blockId = () => 'b_' + Math.random().toString(36).slice(2, 10);
-const sessionId = () => 's_' + Math.random().toString(36).slice(2, 10);
+const blockId = uuid;
+const sessionId = uuid;
 const DEFAULT_SESSION_PRICE = 150; // fallback absoluto se nenhuma configuração existir ainda
 function formatCurrency(v){
   const n = Number(v)||0;
   return n.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 }
 
-/* ---------- Theme color (US-031) ---------- */
+/* ================= Cor de tema do consultório ================= */
 const THEME_PALETTES = {
   green:  { label:'Verde',   swatch:'#3B6255', primary:'#3B6255', primaryDark:'#274238', primarySoft:'#DCE8E1' },
   pink:   { label:'Rosa',    swatch:'#A34B6B', primary:'#A34B6B', primaryDark:'#7A3350', primarySoft:'#F3DCE6' },
@@ -101,13 +180,15 @@ const THEME_PALETTES = {
   yellow: { label:'Amarelo', swatch:'#9C7A1F', primary:'#9C7A1F', primaryDark:'#6E5714', primarySoft:'#F3ECD2' },
 };
 async function loadThemeColor(psicologoId){
-  try{
-    const r = await storage.get('themeColor:'+psicologoId);
-    return (r && r.value && THEME_PALETTES[r.value]) ? r.value : 'green';
-  }catch(e){ return 'green'; }
+  const { data, error } = await supabase.from('theme_color').select('color_key').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadThemeColor', error);
+  return (data && THEME_PALETTES[data.color_key]) ? data.color_key : 'green';
 }
 async function saveThemeColor(psicologoId, key){
-  try{ await storage.set('themeColor:'+psicologoId, key); }catch(e){}
+  const { error } = await supabase.from('theme_color').upsert(
+    { psicologo_id:psicologoId, color_key:key, updated_at:new Date().toISOString() }, { onConflict:'psicologo_id' }
+  );
+  logDbError('saveThemeColor', error);
 }
 function applyTheme(key){
   const p = THEME_PALETTES[key] || THEME_PALETTES.green;
@@ -117,16 +198,20 @@ function applyTheme(key){
   root.setProperty('--primary-soft', p.primarySoft);
 }
 
-/* ---------- Pricing (US-014) ---------- */
+/* ================= Preços ================= */
 function defaultPricing(){ return { presencial: DEFAULT_SESSION_PRICE, online: DEFAULT_SESSION_PRICE }; }
 async function loadPricing(psicologoId){
-  try{
-    const r = await storage.get('pricing:'+psicologoId);
-    return r && r.value ? JSON.parse(r.value) : defaultPricing();
-  }catch(e){ return defaultPricing(); }
+  const { data, error } = await supabase.from('pricing').select('*').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadPricing', error);
+  if(!data) return defaultPricing();
+  return { presencial: Number(data.presencial), online: Number(data.online) };
 }
 async function savePricing(psicologoId, pricing){
-  try{ await storage.set('pricing:'+psicologoId, JSON.stringify(pricing)); }catch(e){}
+  const { error } = await supabase.from('pricing').upsert(
+    { psicologo_id:psicologoId, presencial:pricing.presencial, online:pricing.online, updated_at:new Date().toISOString() },
+    { onConflict:'psicologo_id' }
+  );
+  logDbError('savePricing', error);
 }
 function getDefaultPrice(pricing, patient, modalidade){
   if(patient && patient.customPrice !== undefined && patient.customPrice !== null && patient.customPrice !== ''){
@@ -149,7 +234,6 @@ function findBlockConflict(blocks, psicologoId, date, startTime, durationMin){
       if(b.date !== date) return false;
       return rangesOverlap(slotStart, slotEnd, toMinutes(b.startTime), toMinutes(b.endTime));
     }
-    // feriado / ferias: bloqueio de dia inteiro dentro do intervalo
     return date >= b.startDate && date <= b.endDate;
   }) || null;
 }
@@ -158,8 +242,8 @@ function findSessionConflict(sessions, psicologoId, date, startTime, durationMin
   return sessions.find(s => {
     if(s.psicologoId !== psicologoId || s.date !== date) return false;
     if(s.id === excludeId) return false;
-    if(s.status === 'reagendada') return false; // reagendamentos sempre liberam o horário anterior
-    if(s.status === 'cancelada' && !s.pendingRelease) return false; // cancelamento libera, salvo política de liberação manual
+    if(s.status === 'reagendada') return false;
+    if(s.status === 'cancelada' && !s.pendingRelease) return false;
     const exStart = toMinutes(s.startTime) - bufferMin;
     const exEnd = toMinutes(s.startTime) + s.durationMin + bufferMin;
     return rangesOverlap(slotStart, slotEnd, exStart, exEnd);
@@ -206,18 +290,25 @@ function listAvailableSlotsForDate(date, { availability, blocks, sessions, psico
   return out;
 }
 
-/* ---------- Cancellation policy (US-029) ---------- */
+/* ================= Política de cancelamento ================= */
 function defaultCancelPolicy(){
   return { minHoursForFree:24, lateCancelCharge:'integral', lateCancelPercent:50, autoReleaseSlot:true };
 }
 async function loadCancelPolicy(psicologoId){
-  try{
-    const r = await storage.get('cancelPolicy:'+psicologoId);
-    return r && r.value ? JSON.parse(r.value) : defaultCancelPolicy();
-  }catch(e){ return defaultCancelPolicy(); }
+  const { data, error } = await supabase.from('cancel_policy').select('*').eq('psicologo_id', psicologoId).maybeSingle();
+  logDbError('loadCancelPolicy', error);
+  if(!data) return defaultCancelPolicy();
+  return {
+    minHoursForFree:data.min_hours_for_free, lateCancelCharge:data.late_cancel_charge,
+    lateCancelPercent:data.late_cancel_percent, autoReleaseSlot:data.auto_release_slot,
+  };
 }
 async function saveCancelPolicy(psicologoId, policy){
-  try{ await storage.set('cancelPolicy:'+psicologoId, JSON.stringify(policy)); }catch(e){}
+  const { error } = await supabase.from('cancel_policy').upsert({
+    psicologo_id:psicologoId, min_hours_for_free:policy.minHoursForFree, late_cancel_charge:policy.lateCancelCharge,
+    late_cancel_percent:policy.lateCancelPercent, auto_release_slot:policy.autoReleaseSlot, updated_at:new Date().toISOString(),
+  }, { onConflict:'psicologo_id' });
+  logDbError('saveCancelPolicy', error);
 }
 function cancelPolicyText(policy){
   const chargeText = policy.lateCancelCharge === 'integral'
@@ -228,76 +319,143 @@ function cancelPolicyText(policy){
   return `Cancelamentos feitos com pelo menos ${policy.minHoursForFree}h de antecedência não geram cobrança. Cancelamentos fora desse prazo geram ${chargeText}. ${policy.autoReleaseSlot ? 'O horário é liberado automaticamente na agenda assim que o cancelamento é confirmado.' : 'O horário só é liberado na agenda após revisão do psicólogo.'}`;
 }
 
-/* ---------- In-app notifications (US-008, generalizado em US-011) ---------- */
-async function loadNotificationsFor(ns, id){
-  try{
-    const r = await storage.get(ns+':'+id);
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+/* ================= Notificações in-app ================= */
+function rowToNotification(r){
+  return { id:r.id, read:r.read, createdAt:r.created_at, type:r.type, message:r.message };
 }
-async function saveNotificationsFor(ns, id, list){
-  try{ await storage.set(ns+':'+id, JSON.stringify(list)); }catch(e){}
+async function loadNotificationsFor(_ns, ownerId){
+  const { data, error } = await supabase.from('notifications').select('*').eq('owner_id', ownerId).order('created_at', { ascending:false }).limit(50);
+  logDbError('loadNotificationsFor', error);
+  return data ? data.map(rowToNotification) : [];
 }
-async function pushNotificationFor(ns, id, notif){
-  const list = await loadNotificationsFor(ns, id);
-  list.unshift({ id:'n_'+Math.random().toString(36).slice(2,10), read:false, createdAt:new Date().toISOString(), ...notif });
-  await saveNotificationsFor(ns, id, list);
+async function saveNotificationsFor(_ns, ownerId, list){
+  // Usado para marcar como lidas: propaga qualquer item já marcado read=true na lista local.
+  const readIds = list.filter(n => n.read).map(n => n.id);
+  if(!readIds.length) return;
+  const { error } = await supabase.from('notifications').update({ read:true }).in('id', readIds).eq('owner_id', ownerId);
+  logDbError('saveNotificationsFor', error);
 }
-// Compatibilidade com chamadas já existentes (psicólogo)
+async function pushNotificationFor(_ns, ownerId, notif){
+  const { error } = await supabase.from('notifications').insert({ owner_id: ownerId, type: notif.type, message: notif.message, read:false });
+  logDbError('pushNotificationFor', error);
+}
 async function loadNotifications(psicologoId){ return loadNotificationsFor('notifications', psicologoId); }
 async function saveNotifications(psicologoId, list){ return saveNotificationsFor('notifications', psicologoId, list); }
 async function pushNotification(psicologoId, notif){ return pushNotificationFor('notifications', psicologoId, notif); }
-// Notificações do paciente, indexadas pelo e-mail (disponível de imediato no login, sem precisar resolver o registro de paciente)
-async function pushPatientNotification(email, notif){ return pushNotificationFor('patientNotifications', email.toLowerCase(), notif); }
+// Paciente é notificado pelo próprio id de usuário; resolvemos o e-mail para o id vinculado (linked_user_id).
+async function pushPatientNotification(email, notif){
+  const { data, error } = await supabase.from('patients').select('linked_user_id').eq('email', email.toLowerCase()).maybeSingle();
+  logDbError('pushPatientNotification lookup', error);
+  if(!data || !data.linked_user_id) return; // paciente ainda não tem conta própria vinculada
+  return pushNotificationFor('patientNotifications', data.linked_user_id, notif);
+}
 
-/* ---------- Private notes & audit trail (US-010) ---------- */
+/* ================= Notas privadas ================= */
+function rowToNote(r){
+  return { id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, sessionId:r.session_id, text:r.text, tags:r.tags||[], deleted:r.deleted, deletedAt:r.deleted_at, createdAt:r.created_at, updatedAt:r.updated_at };
+}
+function noteToRow(n){
+  return {
+    id:n.id, psicologo_id:n.psicologoId, patient_id:n.patientId, session_id:n.sessionId || null,
+    text:n.text, tags:n.tags || [], deleted: !!n.deleted, deleted_at:n.deletedAt || null,
+    updated_at: n.updatedAt || new Date().toISOString(),
+  };
+}
 async function loadNotes(){
-  try{
-    const r = await storage.get('notes');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('notes').select('*');
+  logDbError('loadNotes', error);
+  return data ? data.map(rowToNote) : [];
 }
 async function saveNotes(notes){
-  try{ await storage.set('notes', JSON.stringify(notes)); }catch(e){}
+  if(!notes.length) return;
+  const { error } = await supabase.from('notes').upsert(notes.map(noteToRow), { onConflict:'id' });
+  logDbError('saveNotes', error);
 }
-const noteId = () => 'note_' + Math.random().toString(36).slice(2, 10);
+const noteId = uuid;
 
-/* ---------- Homework tasks (US-011) ---------- */
+/* ================= Tarefas de casa ================= */
+function rowToTask(r){
+  return {
+    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, sessionId:r.session_id,
+    title:r.title, instructions:r.instructions, dueDate:r.due_date, frequency:r.frequency,
+    links:r.links||[], status:r.status, patientResponse:r.patient_response||'', patientLinks:r.patient_links||[],
+    history:r.history||[], createdAt:r.created_at,
+  };
+}
+function taskToRow(t){
+  return {
+    id:t.id, psicologo_id:t.psicologoId, patient_id:t.patientId, session_id:t.sessionId || null,
+    title:t.title, instructions:t.instructions, due_date:t.dueDate || null, frequency:t.frequency || 'unica',
+    links:t.links || [], status:t.status || 'pendente', patient_response:t.patientResponse || '',
+    patient_links:t.patientLinks || [], history:t.history || [],
+  };
+}
 async function loadTasks(){
-  try{
-    const r = await storage.get('tasks');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('tasks').select('*');
+  logDbError('loadTasks', error);
+  return data ? data.map(rowToTask) : [];
 }
 async function saveTasks(tasks){
-  try{ await storage.set('tasks', JSON.stringify(tasks)); }catch(e){}
+  if(!tasks.length) return;
+  const { error } = await supabase.from('tasks').upsert(tasks.map(taskToRow), { onConflict:'id' });
+  logDbError('saveTasks', error);
 }
-const taskId = () => 'task_' + Math.random().toString(36).slice(2, 10);
+const taskId = uuid;
 
-/* ---------- Charges / receivables (US-015) ---------- */
+/* ================= Cobranças ================= */
+function rowToCharge(r){
+  return {
+    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, sessionId:r.session_id,
+    description:r.description, amount: Number(r.amount), dueDate:r.due_date, status:r.status,
+    paidAmount: Number(r.paid_amount || 0), payments:r.payments||[], createdAt:r.created_at,
+  };
+}
+function chargeToRow(c){
+  return {
+    id:c.id, psicologo_id:c.psicologoId, patient_id:c.patientId, session_id:c.sessionId || null,
+    description:c.description, amount:c.amount, due_date:c.dueDate || null, status:c.status || 'pendente',
+    paid_amount:c.paidAmount || 0, payments:c.payments || [],
+  };
+}
 async function loadCharges(){
-  try{
-    const r = await storage.get('charges');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('charges').select('*');
+  logDbError('loadCharges', error);
+  return data ? data.map(rowToCharge) : [];
 }
 async function saveCharges(charges){
-  try{ await storage.set('charges', JSON.stringify(charges)); }catch(e){}
+  if(!charges.length) return;
+  const { error } = await supabase.from('charges').upsert(charges.map(chargeToRow), { onConflict:'id' });
+  logDbError('saveCharges', error);
 }
-const chargeId = () => 'ch_' + Math.random().toString(36).slice(2, 10);
+const chargeId = uuid;
 const PAYMENT_METHODS = ['Pix', 'Cartão', 'Dinheiro', 'Transferência', 'Boleto', 'Outro'];
 
-/* ---------- Receipts (US-018) ---------- */
+/* ================= Recibos ================= */
+function rowToReceipt(r){
+  return {
+    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, chargeId:r.charge_id,
+    number:r.number, professionalName:r.professional_name, patientName:r.patient_name, service:r.service,
+    date:r.date, amount: Number(r.amount), status:r.status, supersedes:r.supersedes, issuedAt:r.issued_at,
+  };
+}
+function receiptToRow(rc){
+  return {
+    id:rc.id, psicologo_id:rc.psicologoId, patient_id:rc.patientId, charge_id:rc.chargeId || null,
+    number:rc.number, professional_name:rc.professionalName, patient_name:rc.patientName, service:rc.service,
+    date:rc.date, amount:rc.amount, status:rc.status || 'emitido', supersedes:rc.supersedes || null,
+  };
+}
 async function loadReceipts(){
-  try{
-    const r = await storage.get('receipts');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
+  const { data, error } = await supabase.from('receipts').select('*');
+  logDbError('loadReceipts', error);
+  return data ? data.map(rowToReceipt) : [];
 }
 async function saveReceipts(receipts){
-  try{ await storage.set('receipts', JSON.stringify(receipts)); }catch(e){}
+  if(!receipts.length) return;
+  const { error } = await supabase.from('receipts').upsert(receipts.map(receiptToRow), { onConflict:'id' });
+  logDbError('saveReceipts', error);
 }
-const receiptId = () => 'rcpt_' + Math.random().toString(36).slice(2, 10);
+const receiptId = uuid;
 
 function downloadTextFallbackReceipt(receipt){
   const lines = [
@@ -345,9 +503,6 @@ function generateReceiptPDF(receipt){
     doc.setTextColor(140);
     doc.text(`Emitido em ${formatDate(receipt.issuedAt)} — documento gerado pelo sistema TerapIA.`, 20, y + 8);
 
-    // Download manual via Blob (mesmo mecanismo já comprovado na exportação de prontuário, US-010).
-    // Evita o método .save() interno do jsPDF, que em alguns navegadores tenta abrir nova aba
-    // e pode falhar dentro do iframe restrito do artefato.
     const blob = doc.output('blob');
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -360,23 +515,21 @@ function generateReceiptPDF(receipt){
   }
 }
 
+/* ================= Auditoria ================= */
 async function loadAuditLog(){
-  try{
-    const r = await storage.get('auditLog');
-    return r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ return []; }
-}
-async function saveAuditLog(list){
-  try{ await storage.set('auditLog', JSON.stringify(list)); }catch(e){}
+  const { data, error } = await supabase.from('audit_log').select('*').order('timestamp', { ascending:false });
+  logDbError('loadAuditLog', error);
+  return data ? data.map(r => ({ id:r.id, userId:r.user_id, action:r.action, patientId:r.patient_id, noteId:r.note_id, timestamp:r.timestamp })) : [];
 }
 // IMPORTANTE: nunca gravar texto/conteúdo da nota aqui — só metadados (ação, quem, quando, paciente).
 async function pushAudit(entry){
-  const list = await loadAuditLog();
-  list.unshift({ id:'a_'+Math.random().toString(36).slice(2,10), timestamp:new Date().toISOString(), ...entry });
-  await saveAuditLog(list);
+  const { error } = await supabase.from('audit_log').insert({
+    user_id: entry.userId, action: entry.action, patient_id: entry.patientId || null, note_id: entry.noteId || null,
+  });
+  logDbError('pushAudit', error);
 }
 
-/* ---------- Date helpers (US-005) ---------- */
+/* ================= Datas e horários (utilidades puras) ================= */
 const DOW_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MONTH_NAMES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 function toDateStr(d){
@@ -408,8 +561,6 @@ function computeSlotStatus(date, time, ctx){
   return { kind:'livre' };
 }
 
-/* ---------- Terms modal ---------- */
-
 export {
   SESSION_TIMEOUT_MS, EMAIL_RE, TERMS_VERSION,
   fetchProfile, hasValidConsent, formatDate, formatDateOnly,
@@ -427,7 +578,7 @@ export {
   loadNotes, saveNotes, noteId, loadTasks, saveTasks, taskId,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
   downloadTextFallbackReceipt, generateReceiptPDF,
-  loadAuditLog, saveAuditLog, pushAudit,
+  loadAuditLog, pushAudit,
   DOW_SHORT, MONTH_NAMES, toDateStr, fromDateStr, addDays, startOfWeek, todayStr,
   generateSlots, computeSlotStatus,
 };
