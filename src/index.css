@@ -820,3 +820,35 @@
   .role-cards{ flex-direction:column; align-items:stretch; }
   .role-card{ max-width:none; }
 }
+
+/* ---------- Link confirm screen (US-032) ---------- */
+.link-confirm-card{
+  position:relative; width:100%; max-width:440px; background:var(--surface);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); padding:36px 32px; text-align:center;
+  margin:0 auto;
+}
+.link-confirm-icon{
+  width:56px; height:56px; border-radius:16px; margin:0 auto 20px auto;
+  background:var(--primary-soft); color:var(--primary-dark);
+  display:flex; align-items:center; justify-content:center;
+}
+.link-confirm-title{ font-family:'Fraunces', serif; font-weight:500; font-size:22px; margin:0 0 10px 0; color:var(--ink); }
+.link-confirm-subtitle{ font-size:13.5px; color:var(--ink-muted); line-height:1.6; margin:0 0 26px 0; }
+.link-confirm-prof{
+  display:flex; align-items:center; gap:12px; text-align:left;
+  background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:14px 16px; margin-bottom:24px;
+}
+.link-confirm-avatar{
+  width:42px; height:42px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(150deg, var(--primary-dark), var(--primary));
+  color:#fff; display:flex; align-items:center; justify-content:center;
+  font-family:'Fraunces', serif; font-weight:600; font-size:16px;
+}
+.link-confirm-prof-name{ font-size:14.5px; font-weight:700; color:var(--ink); }
+.link-confirm-prof-role{ font-size:12px; color:var(--ink-faint); }
+.link-confirm-skip{
+  width:100%; padding:12px 18px; border:1px solid transparent; border-radius:12px;
+  background:none; color:var(--ink-faint); font-size:12.5px; font-weight:600;
+  cursor:pointer; font-family:inherit; margin-top:2px;
+}
+.link-confirm-skip:hover{ color:var(--ink-muted); text-decoration:underline; }

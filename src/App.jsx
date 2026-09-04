@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './lib/supabaseClient.js';
 import storage from './lib/storage.js';
 import {
-  fetchProfile, hasValidConsent, loadThemeColor, applyTheme, loadPatients,
+  fetchProfile, hasValidConsent, loadThemeColor, applyTheme, loadPatients, findPendingPatientLink,
   SESSION_TIMEOUT_MS, TERMS_VERSION, todayStr,
 } from './lib/dataStore.js';
 import { NAV_PSICOLOGO, NAV_PACIENTE, SECTION_META } from './lib/navConfig.js';
 import { IconSparkle, IconMail, IconChevronDown, IconClockRewind, IconLock } from './components/icons.jsx';
-import { LoginScreen, RegisterScreen, ForgotPasswordScreen, ConsentGateScreen, RoleSelectScreen } from './components/auth.jsx';
+import { LoginScreen, RegisterScreen, ForgotPasswordScreen, ConsentGateScreen, RoleSelectScreen, LinkConfirmScreen } from './components/auth.jsx';
 import { TermsModal } from './components/shared.jsx';
 import { NotificationsBell, AccountMenu, ProfileSettingsModal, PrivacyModal } from './components/layout.jsx';
 import PainelPsicologo from './components/psicologo/Dashboard.jsx';
@@ -33,6 +33,10 @@ function App(){
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [patientRecord, setPatientRecord] = useState(null);
   const [linkedPsicologoId, setLinkedPsicologoId] = useState(null);
+  const [pendingLink, setPendingLink] = useState(null);
+  const [linkChecked, setLinkChecked] = useState(false);
+  const [skippedLink, setSkippedLink] = useState(false);
+  const [linkVersion, setLinkVersion] = useState(0);
   const [sessionNotice, setSessionNotice] = useState('');
   const lastActivityRef = React.useRef(Date.now());
 
@@ -74,7 +78,9 @@ function App(){
         targetPsicologoId = currentUser.id;
       } else {
         const patients = await loadPatients();
-        const record = patients.find(p => p.email.toLowerCase() === currentUser.email.toLowerCase());
+        // Só considera "vinculado" quando linked_user_id já aponta para este usuário — um convite
+        // ainda pendente (US-032) não deve carregar dados antes da confirmação explícita.
+        const record = patients.find(p => p.linkedUserId === currentUser.id);
         targetPsicologoId = record ? record.psicologoId : null;
         setPatientRecord(record || null);
       }
@@ -82,7 +88,18 @@ function App(){
       const key = targetPsicologoId ? await loadThemeColor(targetPsicologoId) : 'green';
       applyTheme(key);
     })();
-  }, [currentUser]);
+  }, [currentUser, linkVersion]);
+
+  // Verifica se existe um convite de vínculo pendente (US-032) para o e-mail deste paciente.
+  useEffect(() => {
+    if(!currentUser || currentUser.role !== 'paciente'){ setPendingLink(null); setLinkChecked(true); return; }
+    setLinkChecked(false);
+    (async () => {
+      const pending = await findPendingPatientLink(currentUser.email);
+      setPendingLink(pending);
+      setLinkChecked(true);
+    })();
+  }, [currentUser, linkVersion]);
 
   const handleAuthed = useCallback((user) => {
     setCurrentUser(user);
@@ -153,6 +170,21 @@ function App(){
         {authView === 'forgot' && <ForgotPasswordScreen goLogin={()=>setAuthView('login')} />}
         {showRoleTerms && <TermsModal onClose={()=>setShowRoleTerms(false)} />}
       </React.Fragment>
+    );
+  }
+
+  // US-032: convite de vínculo pendente precisa ser checado/confirmado antes de qualquer outra tela
+  if(currentUser.role === 'paciente' && !linkChecked){
+    return null;
+  }
+  if(currentUser.role === 'paciente' && pendingLink && !skippedLink){
+    return (
+      <LinkConfirmScreen
+        pendingPatient={pendingLink}
+        currentUserId={currentUser.id}
+        onConfirmed={() => { setPendingLink(null); setLinkVersion(v => v+1); }}
+        onSkip={() => setSkippedLink(true)}
+      />
     );
   }
 

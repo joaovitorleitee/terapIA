@@ -1,8 +1,62 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
-import { fetchProfile, EMAIL_RE, TERMS_VERSION } from '../lib/dataStore.js';
+import { fetchProfile, loadProfessionalInfoPublic, confirmPatientLink, EMAIL_RE, TERMS_VERSION } from '../lib/dataStore.js';
 import { AuthShell, TermsModal, TermsBody } from './shared.jsx';
-import { IconUsers, IconHome, IconMail, IconEye, IconEyeOff } from './icons.jsx';
+import { IconUsers, IconHome, IconMail, IconEye, IconEyeOff, IconSparkle } from './icons.jsx';
+
+function LinkConfirmScreen({ pendingPatient, currentUserId, onConfirmed, onSkip }){
+  const [psicologo, setPsicologo] = useState(null);
+  const [info, setInfo] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [prof, prof_info] = await Promise.all([
+        fetchProfile(pendingPatient.psicologoId), loadProfessionalInfoPublic(pendingPatient.psicologoId),
+      ]);
+      setPsicologo(prof);
+      setInfo(prof_info);
+      setLoaded(true);
+    })();
+  }, [pendingPatient.psicologoId]);
+
+  const initials = (name) => (name || '').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+  const confirm = async () => {
+    setBusy(true);
+    try{
+      await confirmPatientLink(pendingPatient.id, currentUserId);
+      onConfirmed();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="role-select-page">
+      <div className="link-confirm-card">
+        <div className="link-confirm-icon"><IconSparkle size={22} /></div>
+        <h1 className="link-confirm-title">Encontramos um convite para você</h1>
+        <p className="link-confirm-subtitle">Um psicólogo cadastrou este e-mail como paciente na TerapIA. Confirme para acessar suas sessões, tarefas e pagamentos.</p>
+
+        {loaded && psicologo && (
+          <div className="link-confirm-prof">
+            <div className="link-confirm-avatar">{initials(psicologo.name)}</div>
+            <div>
+              <div className="link-confirm-prof-name">{psicologo.name}</div>
+              <div className="link-confirm-prof-role">Psicólogo(a){info && info.specialty ? ' · '+info.specialty : ''}</div>
+            </div>
+          </div>
+        )}
+
+        <button className="btn-primary" type="button" onClick={confirm} disabled={busy || !loaded}>
+          {busy && <span className="spinner"/>}
+          {busy ? 'Confirmando…' : `Confirmar vínculo${psicologo ? ' com '+psicologo.name.split(' ')[0] : ''}`}
+        </button>
+        <button className="link-confirm-skip" type="button" onClick={onSkip}>Não reconheço, continuar sem vincular</button>
+      </div>
+    </div>
+  );
+}
 
 function ConsentGateScreen({ user, onAccept, onLogout }){
   const [checked, setChecked] = useState(false);
@@ -327,4 +381,4 @@ function ForgotPasswordScreen({ goLogin }){
 /* ---------- Patient form modal (US-003) ---------- */
 
 
-export { ConsentGateScreen, LoginScreen, RegisterScreen, ForgotPasswordScreen, RoleSelectScreen };
+export { ConsentGateScreen, LoginScreen, RegisterScreen, ForgotPasswordScreen, RoleSelectScreen, LinkConfirmScreen };

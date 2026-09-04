@@ -68,6 +68,19 @@ async function savePatients(patients){
 }
 const patientId = uuid;
 
+// Convite pendente: linha de patients com esse e-mail ainda sem linked_user_id (US-032).
+async function findPendingPatientLink(email){
+  const { data, error } = await supabase.from('patients').select('*')
+    .is('linked_user_id', null).ilike('email', email).order('created_at', { ascending:false }).limit(1).maybeSingle();
+  logDbError('findPendingPatientLink', error);
+  return data ? rowToPatient(data) : null;
+}
+async function confirmPatientLink(patientRowId, userId){
+  const { error } = await supabase.from('patients').update({ linked_user_id: userId }).eq('id', patientRowId);
+  logDbError('confirmPatientLink', error);
+  return !error;
+}
+
 /* ================= Disponibilidade, bloqueios e sessões — motor de conflitos ================= */
 const WEEKDAYS = [
   { key:'dom', label:'Domingo' }, { key:'seg', label:'Segunda' }, { key:'ter', label:'Terça' },
@@ -634,6 +647,14 @@ function expenseAppliesToPeriod(expense, periodStart, periodEnd){
   if(expense.recurrence === 'mensal') return expense.date <= periodEnd;
   return expense.date >= periodStart && expense.date <= periodEnd;
 }
+function monthRange(offset = 0){
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const start = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  const end = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  return { start, end };
+}
 const PAYMENT_METHODS = ['Pix', 'Cartão', 'Dinheiro', 'Transferência', 'Boleto', 'Outro'];
 
 /* ================= Recibos ================= */
@@ -770,7 +791,7 @@ function computeSlotStatus(date, time, ctx){
 export {
   SESSION_TIMEOUT_MS, EMAIL_RE, TERMS_VERSION,
   fetchProfile, hasValidConsent, formatDate, formatDateOnly,
-  loadPatients, savePatients, patientId,
+  loadPatients, savePatients, patientId, findPendingPatientLink, confirmPatientLink,
   WEEKDAYS, defaultAvailability, loadAvailability, saveAvailability,
   loadBlocks, saveBlocks, blockId, loadSessions, saveSessions, sessionId,
   DEFAULT_SESSION_PRICE, formatCurrency,
@@ -788,7 +809,7 @@ export {
   loadNotes, saveNotes, noteId, loadTasks, saveTasks, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
-  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod,
+  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,
   downloadTextFallbackReceipt, generateReceiptPDF,
   loadAuditLog, pushAudit,
   DOW_SHORT, MONTH_NAMES, toDateStr, fromDateStr, addDays, startOfWeek, todayStr,
