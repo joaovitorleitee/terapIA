@@ -251,6 +251,76 @@ function RescheduleModal({ session, psicologoId, availability, blocks, sessions,
 }
 
 
+function MinhasSessoesCalendario({ mySessions, statusLabel }){
+  const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); return toDateStr(d); });
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  const year = fromDateStr(monthDate).getFullYear(), month = fromDateStr(monthDate).getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const gridStart = new Date(firstOfMonth); gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+  const cells = Array.from({length:42}, (_,i) => { const d = new Date(gridStart); d.setDate(d.getDate()+i); return d; });
+  const today = todayStr();
+  const monthLabel = firstOfMonth.toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+
+  const goMonth = (delta) => {
+    const d = new Date(year, month + delta, 1);
+    setMonthDate(toDateStr(d));
+    setSelectedDay(null);
+  };
+
+  const daySessions = (dateStr) => mySessions.filter(s => s.date === dateStr);
+  const selectedSessions = selectedDay ? daySessions(selectedDay) : [];
+
+  return (
+    <div>
+      <div className="toolbar" style={{marginBottom:12}}>
+        <button className="btn-secondary" style={{width:'auto', padding:'8px 12px'}} onClick={()=>goMonth(-1)}>←</button>
+        <div style={{fontWeight:700, fontSize:14, textTransform:'capitalize'}}>{monthLabel}</div>
+        <button className="btn-secondary" style={{width:'auto', padding:'8px 12px'}} onClick={()=>goMonth(1)}>→</button>
+      </div>
+
+      <div className="cal-month-grid">
+        {DOW_SHORT.map(d => <div className="cal-month-head" key={d}>{d}</div>)}
+        {cells.map((d,i) => {
+          const dateStr = toDateStr(d);
+          const inMonth = d.getMonth() === month;
+          const sessionsForDay = daySessions(dateStr);
+          return (
+            <div key={i}
+                 className={'cal-month-cell '+(inMonth?'':'muted')+(dateStr===today?' today':'')+(dateStr===selectedDay?' today':'')}
+                 onClick={()=>sessionsForDay.length > 0 && setSelectedDay(dateStr)}
+                 style={{cursor: sessionsForDay.length > 0 ? 'pointer' : 'default'}}>
+              <div className="day-num">{d.getDate()}</div>
+              <div className="m-dots">
+                {sessionsForDay.slice(0,6).map(s => (
+                  <span key={s.id} className="dot" style={{background:
+                    (s.status==='cancelada' || s.status==='falta') ? 'var(--danger)'
+                    : (s.status==='realizada' || s.status==='reagendada') ? 'var(--ink-faint)'
+                    : s.status==='pendente' ? 'var(--warning)'
+                    : s.status==='agendada' ? 'var(--accent)'
+                    : 'var(--primary)'}} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {selectedDay && (
+        <div className="panel" style={{marginTop:16}}>
+          <h3>{formatDateOnly(selectedDay)}</h3>
+          {selectedSessions.map(s => (
+            <div className="mini-session-row" key={s.id}>
+              <span>{s.startTime} · {s.durationMin} min · {s.modalidade || 'Presencial'}</span>
+              <span className={'badge status-'+s.status}>{statusLabel[s.status] || s.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MinhasSessoesPaciente({ user }){
   const [loading, setLoading] = useState(true);
   const [patientRecord, setPatientRecord] = useState(null);
@@ -262,6 +332,7 @@ function MinhasSessoesPaciente({ user }){
   const [showBooking, setShowBooking] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [view, setView] = useState('lista'); // lista | calendario
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
@@ -344,7 +415,13 @@ function MinhasSessoesPaciente({ user }){
   return (
     <div>
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10}}>
-        <div className="field hint" style={{margin:0}}>{upcoming.length} sessão(ões) futura(s)</div>
+        <div style={{display:'flex', alignItems:'center', gap:14, flexWrap:'wrap'}}>
+          <div className="field hint" style={{margin:0}}>{upcoming.length} sessão(ões) futura(s)</div>
+          <div className="filter-pills">
+            <button className={'filter-pill '+(view==='lista'?'active':'')} onClick={()=>setView('lista')}>Lista</button>
+            <button className={'filter-pill '+(view==='calendario'?'active':'')} onClick={()=>setView('calendario')}>Calendário</button>
+          </div>
+        </div>
         <button className="btn-new" onClick={()=>setShowBooking(true)}><IconPlus size={15}/> Agendar consulta</button>
       </div>
 
@@ -357,6 +434,8 @@ function MinhasSessoesPaciente({ user }){
             <IconPlus size={15}/> Agendar consulta
           </button>
         </div>
+      ) : view === 'calendario' ? (
+        <MinhasSessoesCalendario mySessions={mySessions} statusLabel={statusLabel} />
       ) : (
         mySessions.map(s => (
           <div className="session-card" key={s.id}>
