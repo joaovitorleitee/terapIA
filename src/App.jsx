@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './lib/supabaseClient.js';
 import storage from './lib/storage.js';
 import {
-  fetchProfile, hasValidConsent, loadThemeColor, applyTheme, loadPatients, findPendingPatientLink,
+  fetchProfile, hasValidConsent, loadThemeColor, applyTheme, loadPatients, findPendingPatientLink, pushAudit,
   SESSION_TIMEOUT_MS, TERMS_VERSION, todayStr,
 } from './lib/dataStore.js';
 import { NAV_PSICOLOGO, NAV_PACIENTE, SECTION_META } from './lib/navConfig.js';
@@ -17,6 +17,7 @@ import { SessoesNotasPsicologo } from './components/psicologo/Notes.jsx';
 import { TarefasPsicologo } from './components/psicologo/Tasks.jsx';
 import { FinanceiroPsicologo } from './components/psicologo/Financeiro.jsx';
 import { RelatoriosPsicologo } from './components/psicologo/Reports.jsx';
+import { AuditoriaPsicologo } from './components/psicologo/Audit.jsx';
 import InicioPaciente from './components/paciente/Dashboard.jsx';
 import { MinhasSessoesPaciente } from './components/paciente/Sessions.jsx';
 import { MinhasTarefasPaciente } from './components/paciente/Tasks.jsx';
@@ -108,6 +109,7 @@ function App(){
     setSessionNotice('');
     lastActivityRef.current = Date.now();
     // A sessão em si já é persistida pelo próprio cliente do Supabase (via supabaseSessionStorage).
+    pushAudit({ userId: user.id, action: 'login' }).catch(()=>{});
   }, []);
 
   const logout = useCallback((notice) => {
@@ -207,6 +209,7 @@ function App(){
     if(role === 'psicologo' && section === 'tarefas') return <TarefasPsicologo psicologoId={currentUser.id} />;
     if(role === 'psicologo' && section === 'financeiro') return <FinanceiroPsicologo psicologoId={currentUser.id} professionalName={currentUser.name} />;
     if(role === 'psicologo' && section === 'relatorios') return <RelatoriosPsicologo psicologoId={currentUser.id} />;
+    if(role === 'psicologo' && section === 'auditoria') return <AuditoriaPsicologo psicologoId={currentUser.id} />;
     if(role === 'paciente' && section === 'inicio') return <InicioPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'minhas-sessoes') return <MinhasSessoesPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'minhas-tarefas') return <MinhasTarefasPaciente user={currentUser} />;

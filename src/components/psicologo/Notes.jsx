@@ -78,6 +78,12 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Registra o acesso ao prontuário (US-025) — uma vez por abertura da tela, nunca o conteúdo.
+  useEffect(() => {
+    pushAudit({ userId: currentUserId, action: 'prontuario_acessado', patientId: patient.id }).catch(()=>{});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id]);
+
   const saveNote = async (data) => {
     const all = await loadNotes();
     if(editingNote){

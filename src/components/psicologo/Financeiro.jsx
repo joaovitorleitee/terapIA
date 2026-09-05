@@ -5,6 +5,7 @@ import {
   loadReceipts, saveReceipts, receiptId, generateReceiptPDF,
   loadPatients, loadSessions, formatCurrency, formatDateOnly, todayStr,
   EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,
+  pushAudit,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconWallet, IconTrash } from '../icons.jsx';
 
@@ -65,6 +66,7 @@ function ReceiptsPanel({ psicologoId }){
     const all = await loadReceipts();
     const updated = all.map(r => r.id === receipt.id ? { ...r, status:'cancelado' } : r);
     await saveReceipts(updated);
+    await pushAudit({ userId: psicologoId, action:'recibo_cancelado', patientId: receipt.patientId });
     await refresh();
   };
 
@@ -73,6 +75,7 @@ function ReceiptsPanel({ psicologoId }){
     const number = 'REC-' + String(all.filter(r=>r.psicologoId===psicologoId).length + 1).padStart(4, '0');
     const newReceipt = { ...receipt, id: receiptId(), number, status:'emitido', issuedAt:new Date().toISOString(), supersedes:receipt.number };
     await saveReceipts([...all, newReceipt]);
+    await pushAudit({ userId: psicologoId, action:'recibo_emitido', patientId: receipt.patientId });
     generateReceiptPDF(newReceipt);
     await refresh();
   };
@@ -477,6 +480,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     const all = await loadCharges();
     const newCharge = { id: chargeId(), psicologoId, status:'pendente', paidAmount:0, payments:[], createdAt:new Date().toISOString(), ...data };
     await saveCharges([...all, newCharge]);
+    await pushAudit({ userId: psicologoId, action:'cobranca_criada', patientId: data.patientId });
     setShowChargeForm(false);
     setPresetSession(null);
     await refresh();
@@ -493,6 +497,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
       status:'emitido', issuedAt:new Date().toISOString(), supersedes:null,
     };
     await saveReceipts([...allReceipts, newReceipt]);
+    await pushAudit({ userId: psicologoId, action:'recibo_emitido', patientId: charge.patientId });
     generateReceiptPDF(newReceipt);
     await refresh();
   };
@@ -506,6 +511,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
       return { ...c, paidAmount:newPaid, status, payments:[...(c.payments||[]), data] };
     });
     await saveCharges(updated);
+    await pushAudit({ userId: psicologoId, action:'pagamento_registrado', patientId: payingCharge.patientId });
     setPayingCharge(null);
     await refresh();
   };
@@ -514,6 +520,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     const all = await loadCharges();
     const updated = all.map(c => c.id === charge.id ? { ...c, status:'cancelado' } : c);
     await saveCharges(updated);
+    await pushAudit({ userId: psicologoId, action:'cobranca_cancelada', patientId: charge.patientId });
     await refresh();
   };
 
@@ -521,6 +528,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     const all = await loadCharges();
     const updated = all.map(c => c.id === charge.id ? { ...c, status:'reembolsado' } : c);
     await saveCharges(updated);
+    await pushAudit({ userId: psicologoId, action:'cobranca_reembolsada', patientId: charge.patientId });
     await refresh();
   };
 
