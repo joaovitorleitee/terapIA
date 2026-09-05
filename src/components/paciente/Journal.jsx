@@ -48,14 +48,13 @@ function DiarioPaciente({ user }){
     );
   }
 
-  const pastEntries = entries.filter(e => e.entryDate !== todayStr());
   const moodEmoji = (m) => (MOOD_OPTIONS.find(o => o.value === m) || {}).emoji || '';
 
   return (
     <div>
       <div className="panel" style={{marginBottom:20}}>
         <h3>Como você está hoje?</h3>
-        <div className="panel-sub">Registre sua rotina, sentimentos ou sintomas. Você pode editar a entrada de hoje quantas vezes quiser — depois de virar o dia, ela fica só como histórico.</div>
+        <div className="panel-sub">Registre sua rotina, sentimentos ou sintomas. Você pode editar a entrada de hoje quantas vezes quiser — ela já fica salva e visível no histórico abaixo; depois de virar o dia, só fica disponível para leitura.</div>
         <div style={{display:'flex', gap:8, margin:'14px 0', flexWrap:'wrap'}}>
           {MOOD_OPTIONS.map(o => (
             <button key={o.value} type="button"
@@ -75,16 +74,19 @@ function DiarioPaciente({ user }){
       </div>
 
       <h3 style={{fontSize:15, marginBottom:10}}>Histórico</h3>
-      {pastEntries.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="empty-state">
           <div className="icon-wrap"><IconNote size={24}/></div>
-          <h2>Nenhuma entrada anterior</h2>
-          <p>Seu histórico de diário vai aparecer aqui, dia após dia.</p>
+          <h2>Nenhuma entrada ainda</h2>
+          <p>Salve sua primeira entrada de hoje para começar seu histórico.</p>
         </div>
-      ) : pastEntries.map(e => (
+      ) : entries.map(e => (
         <div className="task-card" key={e.id}>
           <div className="tc-top">
-            <div className="tc-title">{formatDateOnly(e.entryDate)} {moodEmoji(e.mood)}</div>
+            <div className="tc-title">
+              {formatDateOnly(e.entryDate)} {moodEmoji(e.mood)}
+              {e.entryDate === todayStr() && <span className="badge status-agendada" style={{marginLeft:8}}>Hoje · editável</span>}
+            </div>
           </div>
           <div className="tc-instructions">{e.content}</div>
         </div>
