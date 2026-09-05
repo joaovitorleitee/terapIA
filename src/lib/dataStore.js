@@ -625,6 +625,37 @@ async function saveNotes(notes){
 }
 const noteId = uuid;
 
+/* ================= Widgets do painel (personalização) ================= */
+const WIDGET_CATALOG_PSICOLOGO = [
+  { key:'despesas_mes', label:'Despesas do mês', group:'Financeiro' },
+  { key:'recebimentos_pendentes', label:'Recebimentos pendentes', group:'Financeiro' },
+  { key:'inadimplencia_total', label:'Inadimplência total', group:'Relatórios gerais' },
+  { key:'sessoes_realizadas_mes', label:'Sessões realizadas no mês', group:'Relatórios gerais' },
+  { key:'notas_recentes', label:'Notas registradas (últimos 7 dias)', group:'Notas' },
+  { key:'tarefas_atrasadas', label:'Tarefas atrasadas', group:'Tarefas de casa' },
+  { key:'tarefas_concluidas_mes', label:'Tarefas concluídas no mês', group:'Tarefas de casa' },
+];
+const WIDGET_CATALOG_PACIENTE = [
+  { key:'documentos_enviados', label:'Documentos enviados', group:'Documentos' },
+  { key:'diario_sequencia', label:'Dias seguidos de diário', group:'Diário' },
+  { key:'tarefas_concluidas_total', label:'Tarefas concluídas (total)', group:'Tarefas de casa' },
+  { key:'pagamentos_realizados', label:'Pagamentos realizados', group:'Financeiro' },
+];
+async function loadDashboardWidgets(userId){
+  const { data, error } = await supabase.from('dashboard_widgets').select('widget_key').eq('user_id', userId);
+  logDbError('loadDashboardWidgets', error);
+  return data ? data.map(r => r.widget_key) : [];
+}
+async function addDashboardWidget(userId, key){
+  const { error } = await supabase.from('dashboard_widgets').insert({ user_id: userId, widget_key: key });
+  logDbError('addDashboardWidget', error);
+}
+async function removeDashboardWidget(userId, key){
+  const { error } = await supabase.from('dashboard_widgets').delete().eq('user_id', userId).eq('widget_key', key);
+  logDbError('removeDashboardWidget', error);
+}
+
+
 /* ================= Diário do paciente (US-036) ================= */
 const MOOD_OPTIONS = [
   { value:'muito_mal', label:'Muito mal', emoji:'😞' },
@@ -1007,6 +1038,7 @@ export {
   loadNotificationsFor, saveNotificationsFor, pushNotificationFor,
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
   loadNotes, saveNotes, noteId,
+  WIDGET_CATALOG_PSICOLOGO, WIDGET_CATALOG_PACIENTE, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget,
   MOOD_OPTIONS, loadJournalEntries, saveJournalEntry,
   DOCUMENT_CATEGORIES, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, updatePatientDocument, deletePatientDocument, loadTasks, saveTasks, updateTaskFields, deleteTask, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,

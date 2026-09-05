@@ -116,4 +116,38 @@ function PixQrModal({ pixKey, merchantName, merchantCity, amount, txid, descript
   );
 }
 
-export { EmptyState, TagInput, TermsBody, TermsModal, AuthShell, PixQrModal };
+function WidgetPickerModal({ catalog, activeKeys, onAdd, onClose }){
+  const groups = {};
+  catalog.forEach(w => {
+    if(activeKeys.includes(w.key)) return;
+    (groups[w.group] = groups[w.group] || []).push(w);
+  });
+  const groupNames = Object.keys(groups);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()}>
+        <h3>Adicionar widget</h3>
+        <div className="field hint" style={{marginBottom:16}}>Escolha um bloco informativo para adicionar ao seu painel.</div>
+        {groupNames.length === 0 ? (
+          <div className="field hint">Você já adicionou todos os widgets disponíveis.</div>
+        ) : groupNames.map(g => (
+          <div className="widget-picker-group" key={g}>
+            <h4>{g}</h4>
+            {groups[g].map(w => (
+              <div className="widget-picker-item" key={w.key}>
+                <span>{w.label}</span>
+                <button className="btn-link" style={{fontWeight:700}} onClick={()=>onAdd(w.key)}>Adicionar</button>
+              </div>
+            ))}
+          </div>
+        ))}
+        <div className="modal-actions" style={{marginTop:8}}>
+          <button className="btn-secondary" type="button" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export { EmptyState, TagInput, TermsBody, TermsModal, AuthShell, PixQrModal, WidgetPickerModal };

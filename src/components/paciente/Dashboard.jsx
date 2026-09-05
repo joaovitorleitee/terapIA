@@ -1,48 +1,81 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { loadPatients, loadSessions, loadTasks, loadCharges, loadAvailability, loadProfessionalInfoPublic, getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
-import { TermsModal } from '../shared.jsx';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  loadPatients, loadSessions, loadTasks, loadCharges, loadAvailability, loadProfessionalInfoPublic,
+  getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr,
+  loadPatientDocuments, loadJournalEntries, loadReceipts,
+  WIDGET_CATALOG_PACIENTE, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget, formatCurrency,
+} from '../../lib/dataStore.js';
+import { TermsModal, WidgetPickerModal } from '../shared.jsx';
 import { IconUsers } from '../icons.jsx';
 
 function InicioPaciente({ user }){
   const [showTerms, setShowTerms] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [patientRecord, setPatientRecord] = useState(null);
   const [nextSession, setNextSession] = useState(null);
   const [activeTasks, setActiveTasks] = useState(0);
   const [completedTasks, setCompletedTasks] = useState(0);
-  const [openCharges, setOpenCharges] = useState(0);
+  const [overdueCharges, setOverdueCharges] = useState(0);
   const [professional, setProfessional] = useState(null);
   const [professionalName, setProfessionalName] = useState('');
   const [myPhotoPath, setMyPhotoPath] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [meetingLink, setMeetingLink] = useState('');
+  const [extra, setExtra] = useState({});
+  const [widgetKeys, setWidgetKeys] = useState([]);
+  const [showPicker, setShowPicker] = useState(false);
   const photoInputRef = useRef(null);
 
-  useEffect(() => {
-    (async () => {
-      const allPatients = await loadPatients();
-      const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
-      const me = await fetchProfile(user.id);
-      if(me) setMyPhotoPath(me.photoPath);
-      if(record){
-        const [sessions, tasks, charges, prof, psi, availability] = await Promise.all([
-          loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId), fetchProfile(record.psicologoId), loadAvailability(record.psicologoId),
-        ]);
-        setMeetingLink(availability.meetingLink || '');
-        const mySessions = sessions
-          .filter(s => s.patientId === record.id && s.date >= todayStr() && ['confirmada','pendente','agendada'].includes(s.status))
-          .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
-        setNextSession(mySessions[0] || null);
-        const myTasks = tasks.filter(t => t.patientId === record.id);
-        setActiveTasks(myTasks.filter(t => t.status === 'pendente' || t.status === 'em_andamento').length);
-        setCompletedTasks(myTasks.filter(t => t.status === 'concluida').length);
-        const myCharges = charges.filter(c => c.patientId === record.id && (c.status === 'pendente' || c.status === 'parcial'));
-        setOpenCharges(myCharges.length);
-        if(psi) setProfessionalName(psi.name);
-        if(prof) setProfessional(prof);
+  const refresh = useCallback(async () => {
+    const allPatients = await loadPatients();
+    const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
+    setPatientRecord(record || null);
+    const me = await fetchProfile(user.id);
+    if(me) setMyPhotoPath(me.photoPath);
+    const widgets = await loadDashboardWidgets(user.id);
+    setWidgetKeys(widgets);
+    if(record){
+      const [sessions, tasks, charges, prof, psi, availability, documents, journal, receipts] = await Promise.all([
+        loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId), fetchProfile(record.psicologoId),
+        loadAvailability(record.psicologoId), loadPatientDocuments(record.id), loadJournalEntries(record.id), loadReceipts(),
+      ]);
+      setMeetingLink(availability.meetingLink || '');
+      const today = todayStr();
+      const mySessions = sessions
+        .filter(s => s.patientId === record.id && s.date >= today && ['confirmada','pendente','agendada'].includes(s.status))
+        .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
+      setNextSession(mySessions[0] || null);
+      const myTasks = tasks.filter(t => t.patientId === record.id);
+      setActiveTasks(myTasks.filter(t => t.status === 'pendente' || t.status === 'em_andamento').length);
+      setCompletedTasks(myTasks.filter(t => t.status === 'concluida').length);
+      const myCharges = charges.filter(c => c.patientId === record.id);
+      setOverdueCharges(myCharges.filter(c => (c.status === 'pendente' || c.status === 'parcial') && c.dueDate && c.dueDate < today).length);
+      if(psi) setProfessionalName(psi.name);
+      if(prof) setProfessional(prof);
+
+      // Sequência de dias seguidos de diário, contando a partir da entrada mais recente.
+      const sortedJournal = [...journal].sort((a,b) => b.entryDate.localeCompare(a.entryDate));
+      let streak = 0;
+      if(sortedJournal.length){
+        let cursor = new Date(sortedJournal[0].entryDate+'T00:00:00');
+        const dates = new Set(sortedJournal.map(e => e.entryDate));
+        while(dates.has(cursor.toISOString().slice(0,10))){
+          streak++;
+          cursor.setDate(cursor.getDate()-1);
+        }
       }
-      setLoading(false);
-    })();
+
+      setExtra({
+        documentos_enviados: documents.filter(d => d.uploadedByRole === 'paciente').length,
+        diario_sequencia: streak,
+        tarefas_concluidas_total: myTasks.filter(t => t.status === 'concluida').length,
+        pagamentos_realizados: receipts.filter(r => r.patientId === record.id && r.status === 'emitido').length,
+      });
+    }
+    setLoading(false);
   }, [user.email, user.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
 
   const handlePhotoChosen = async (e) => {
     const file = e.target.files[0];
@@ -52,6 +85,28 @@ function InicioPaciente({ user }){
     const result = await uploadOwnPhoto(user.id, file);
     setPhotoUploading(false);
     if(!result.error) setMyPhotoPath(result.photoPath);
+  };
+
+  const handleAddWidget = async (key) => {
+    await addDashboardWidget(user.id, key);
+    setShowPicker(false);
+    await refresh();
+  };
+  const handleRemoveWidget = async (key) => {
+    await removeDashboardWidget(user.id, key);
+    await refresh();
+  };
+
+  const renderExtraWidget = (key) => {
+    const catalogItem = WIDGET_CATALOG_PACIENTE.find(w => w.key === key);
+    if(!catalogItem) return null;
+    return (
+      <div className="widget-square" key={key}>
+        <button className="widget-remove-btn" onClick={()=>handleRemoveWidget(key)} title="Remover">×</button>
+        <div className="widget-label">{catalogItem.label}</div>
+        <div className="widget-value">{extra[key] ?? 0}</div>
+      </div>
+    );
   };
 
   return (
@@ -75,62 +130,83 @@ function InicioPaciente({ user }){
           <p>Aqui você acompanha suas próximas sessões, tarefas e pagamentos, tudo em um único lugar.</p>
         </div>
       </div>
-      <div className="grid-cards">
-        <div className="stat-card">
-          <div className="stat-label">Próxima sessão</div>
-          <div className="stat-value" style={{fontSize: nextSession ? 17 : 28}}>
-            {loading ? '—' : (nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma agendada')}
-          </div>
-          {nextSession && meetingLink && (
-            <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
-              Entrar na sessão →
-            </a>
-          )}
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Tarefas ativas</div>
-          <div className="stat-value">{loading ? '—' : activeTasks}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Tarefas concluídas</div>
-          <div className="stat-value">{loading ? '—' : completedTasks}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Cobranças em aberto</div>
-          <div className="stat-value">{loading ? '—' : openCharges}</div>
-        </div>
-      </div>
-      {professional && (
-        <div className="stat-card" style={{marginTop:16}}>
-          <div className="stat-label" style={{marginBottom:10}}>Sobre seu psicólogo(a)</div>
-          <div style={{display:'flex', alignItems:'center', gap:14}}>
-            <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', background:'var(--primary-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
-              {professional.photoPath
-                ? <img src={getProfessionalPhotoUrl(professional.photoPath)} alt={professionalName} style={{width:'100%', height:'100%', objectFit:'cover'}} />
-                : <IconUsers size={24} color="var(--primary-dark)" />}
+
+      {loading ? (
+        <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>
+      ) : (
+        <React.Fragment>
+          <div className="widget-grid">
+            <div className="widget-square">
+              <div className="widget-label">Próxima sessão</div>
+              <div className="widget-value" style={{fontSize: nextSession ? 16 : 26}}>
+                {nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma'}
+              </div>
+              {nextSession && meetingLink && (
+                <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
+                  Entrar na sessão →
+                </a>
+              )}
             </div>
+
+            <div className="widget-square">
+              <div className="widget-label">Tarefas ativas</div>
+              <div className="widget-value">{activeTasks}</div>
+            </div>
+
+            <div className="widget-square">
+              <div className="widget-label">Tarefas concluídas</div>
+              <div className="widget-value">{completedTasks}</div>
+            </div>
+
+            {overdueCharges > 0 && (
+              <div className="widget-square danger">
+                <div className="widget-label">Cobranças vencidas</div>
+                <div className="widget-value">{overdueCharges}</div>
+              </div>
+            )}
+
+            {widgetKeys.map(renderExtraWidget)}
+          </div>
+
+          {professional && (
+            <div className="stat-card" style={{marginTop:4}}>
+              <div className="stat-label" style={{marginBottom:10}}>Sobre seu psicólogo(a)</div>
+              <div style={{display:'flex', alignItems:'center', gap:14}}>
+                <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', background:'var(--primary-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                  {professional.photoPath
+                    ? <img src={getProfessionalPhotoUrl(professional.photoPath)} alt={professionalName} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                    : <IconUsers size={24} color="var(--primary-dark)" />}
+                </div>
+                <div>
+                  {professionalName && <div style={{fontSize:15, fontWeight:700, color:'var(--ink)'}}>{professionalName}</div>}
+                  <div style={{fontSize:12, color:'var(--ink-faint)'}}>
+                    {professional.crp && <span>CRP {professional.crp}</span>}
+                    {professional.crp && professional.specialty && <span> · </span>}
+                    {professional.specialty && <span>{professional.specialty}</span>}
+                  </div>
+                </div>
+              </div>
+              {professional.bio && <div style={{fontSize:13, color:'var(--ink-muted)', lineHeight:1.6, marginTop:10}}>{professional.bio}</div>}
+            </div>
+          )}
+
+          <div className="stat-card" style={{marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
             <div>
-              {professionalName && <div style={{fontSize:15, fontWeight:700, color:'var(--ink)'}}>{professionalName}</div>}
-              <div style={{fontSize:12, color:'var(--ink-faint)'}}>
-                {professional.crp && <span>CRP {professional.crp}</span>}
-                {professional.crp && professional.specialty && <span> · </span>}
-                {professional.specialty && <span>{professional.specialty}</span>}
+              <div className="stat-label" style={{marginBottom:4}}>Meu consentimento</div>
+              <div style={{fontSize:13, color:'var(--ink-muted)'}}>
+                Aceito em {formatDate(user.termsAcceptedAt)} · versão {user.termsVersion}
               </div>
             </div>
+            <button className="btn-link" onClick={()=>setShowTerms(true)}>Ver termos</button>
           </div>
-          {professional.bio && <div style={{fontSize:13, color:'var(--ink-muted)', lineHeight:1.6, marginTop:10}}>{professional.bio}</div>}
-        </div>
+        </React.Fragment>
       )}
-      <div className="stat-card" style={{marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
-        <div>
-          <div className="stat-label" style={{marginBottom:4}}>Meu consentimento</div>
-          <div style={{fontSize:13, color:'var(--ink-muted)'}}>
-            Aceito em {formatDate(user.termsAcceptedAt)} · versão {user.termsVersion}
-          </div>
-        </div>
-        <button className="btn-link" onClick={()=>setShowTerms(true)}>Ver termos</button>
-      </div>
+
       {showTerms && <TermsModal onClose={()=>setShowTerms(false)} />}
+      <button className="widget-fab" onClick={()=>setShowPicker(true)} title="Adicionar widget">+</button>
+      {showPicker && (
+        <WidgetPickerModal catalog={WIDGET_CATALOG_PACIENTE} activeKeys={widgetKeys} onAdd={handleAddWidget} onClose={()=>setShowPicker(false)} />
+      )}
     </div>
   );
 }
