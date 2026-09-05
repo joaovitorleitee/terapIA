@@ -5,269 +5,10 @@ import {
   loadSessions, loadNotes, saveNotes, noteId, pushAudit, formatDate, formatDateOnly, loadPatients,
   DOCUMENT_CATEGORIES, loadPatientDocuments, updatePatientDocument, deletePatientDocument, getPatientDocumentUrl,
   loadJournalEntries, MOOD_OPTIONS, todayStr,
-  loadTasks, saveTasks, deleteTask, taskId, pushPatientNotification,
 } from '../../lib/dataStore.js';
 import { showToast } from '../../lib/toast.js';
 import { TagInput } from '../shared.jsx';
-import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash, IconBook, IconTask } from '../icons.jsx';
-import { TaskFormModal } from './Tasks.jsx';
-
-function PatientTasksPanel({ psicologoId, patient }){
-  const [tasks, setTasks] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
-
-  const refresh = useCallback(async () => {
-    const all = await loadTasks();
-    setTasks(all.filter(t => t.psicologoId === psicologoId && t.patientId === patient.id)
-                 .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
-  }, [psicologoId, patient.id]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  const statusLabel = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluída', cancelada:'Cancelada' };
-  const frequencyLabel = { unica:'Única', diaria:'Diária', semanal:'Semanal' };
-
-  const saveTask = async (data) => {
-    const all = await loadTasks();
-    if(editingTask){
-      const updated = all.map(t => t.id === editingTask.id ? { ...t, ...data } : t);
-      await saveTasks(updated);
-      showToast('Tarefa atualizada com sucesso.');
-    } else {
-      const now = new Date().toISOString();
-      const newTask = {
-        id: taskId(), psicologoId, status:'pendente', createdAt: now,
-        history: [{ status:'pendente', changedAt: now, by:'psicologo' }],
-        patientResponse: '', patientLinks: [],
-        ...data,
-      };
-      await saveTasks([...all, newTask]);
-      await pushPatientNotification(patient.email, { type:'tarefa', message:`Nova tarefa: "${data.title}"` });
-      showToast('Tarefa criada com sucesso.');
-    }
-    setShowForm(false);
-    setEditingTask(null);
-    await refresh();
-  };
-
-  const toggleCancel = async (task) => {
-    const all = await loadTasks();
-    const newStatus = task.status === 'cancelada' ? 'pendente' : 'cancelada';
-    const now = new Date().toISOString();
-    const updated = all.map(t => t.id === task.id
-      ? { ...t, status:newStatus, history:[...(t.history||[]), { status:newStatus, changedAt:now, by:'psicologo' }] }
-      : t);
-    await saveTasks(updated);
-    await refresh();
-    showToast(newStatus === 'cancelada' ? 'Tarefa cancelada com sucesso.' : 'Tarefa reativada com sucesso.');
-  };
-
-  const removeTask = async (task) => {
-    const ok = window.confirm(`Excluir a tarefa "${task.title}" definitivamente? Essa ação não pode ser desfeita.`);
-    if(!ok) return;
-    await deleteTask(task.id);
-    await refresh();
-    showToast('Tarefa excluída com sucesso.');
-  };
-
-  if(tasks === null){
-    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando tarefas…</div>;
-  }
-
-  return (
-    <div>
-      <div className="toolbar">
-        <div className="field hint" style={{flex:1, margin:0}}>Tarefas de casa deste paciente, com as respostas dele.</div>
-        <button className="btn-new" onClick={()=>{ setEditingTask(null); setShowForm(true); }}><IconPlus size={15}/> Nova tarefa</button>
-      </div>
-
-      {tasks.length === 0 ? (
-        <div className="empty-state">
-          <div className="icon-wrap"><IconTask size={24}/></div>
-          <h2>Nenhuma tarefa ainda</h2>
-          <p>Crie a primeira tarefa de casa para este paciente.</p>
-        </div>
-      ) : tasks.map(t => {
-        const isLate = t.dueDate && t.dueDate < todayStr() && (t.status === 'pendente' || t.status === 'em_andamento');
-        const displayStatus = isLate ? 'atrasada' : t.status;
-        return (
-          <div className="task-card" key={t.id}>
-            <div className="tc-top">
-              <div className="tc-title">{t.title}</div>
-              <span className={'badge status-'+displayStatus}>{isLate ? 'Atrasada' : statusLabel[t.status]}</span>
-            </div>
-            <div className="tc-instructions">{t.instructions}</div>
-            <div className="tc-meta-row">
-              <span>Frequência: {frequencyLabel[t.frequency]}</span>
-              {t.dueDate && <span>Prazo: {formatDateOnly(t.dueDate)}</span>}
-              {t.sessionId && <span>Vinculada a uma sessão</span>}
-            </div>
-            {t.links && t.links.length > 0 && (
-              <div className="tc-links">
-                {t.links.map((l,i) => <a key={i} href={l} target="_blank" rel="noopener noreferrer">{l}</a>)}
-              </div>
-            )}
-            {(t.patientResponse || (t.patientLinks && t.patientLinks.length > 0)) && (
-              <div style={{marginTop:10, padding:'10px 12px', background:'var(--surface-alt)', borderRadius:10}}>
-                <div style={{fontSize:11, fontWeight:700, color:'var(--ink-muted)', marginBottom:4}}>Resposta do paciente</div>
-                {t.patientResponse && <div style={{fontSize:12.5, color:'var(--ink)', whiteSpace:'pre-wrap'}}>{t.patientResponse}</div>}
-                {t.patientLinks && t.patientLinks.length > 0 && (
-                  <div className="tc-links" style={{marginTop:6}}>
-                    {t.patientLinks.map((l,i) => <a key={i} href={l} target="_blank" rel="noopener noreferrer">{l}</a>)}
-                  </div>
-                )}
-              </div>
-            )}
-            {t.history && t.history.length > 1 && (
-              <div style={{marginTop:8, fontSize:11, color:'var(--ink-faint)'}}>
-                Histórico: {t.history.map((h,i) => `${statusLabel[h.status]||h.status} (${h.by === 'paciente' ? 'paciente' : 'você'}, ${formatDate(h.changedAt)})`).join(' → ')}
-              </div>
-            )}
-            <div className="tc-actions">
-              <button className="btn-link" onClick={()=>{ setEditingTask(t); setShowForm(true); }}>Editar</button>
-              <button className="btn-link" style={{color: t.status==='cancelada' ? 'var(--primary-dark)' : 'var(--danger)'}} onClick={()=>toggleCancel(t)}>
-                {t.status === 'cancelada' ? 'Reativar' : 'Cancelar tarefa'}
-              </button>
-              <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>removeTask(t)}>Excluir</button>
-            </div>
-          </div>
-        );
-      })}
-
-      {showForm && (
-        <TaskFormModal psicologoId={psicologoId} patients={[patient]} templates={[]} editingTask={editingTask}
-                        onClose={()=>{ setShowForm(false); setEditingTask(null); }} onSave={saveTask} />
-      )}
-    </div>
-  );
-}
-
-function JournalPanel({ patientId }){
-  const [entries, setEntries] = useState(null);
-
-  useEffect(() => { loadJournalEntries(patientId).then(setEntries); }, [patientId]);
-
-  if(entries === null){
-    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando diário…</div>;
-  }
-
-  const moodEmoji = (m) => (MOOD_OPTIONS.find(o => o.value === m) || {}).emoji || '';
-
-  return (
-    <div>
-      <div className="alert alert-success" style={{marginBottom:16}}>
-        Conteúdo escrito pelo próprio paciente — somente leitura. Você não pode editar nem excluir entradas do diário.
-      </div>
-      {entries.length === 0 ? (
-        <div className="field hint">Este paciente ainda não registrou nenhuma entrada de diário.</div>
-      ) : entries.map(e => (
-        <div className="panel" key={e.id} style={{marginBottom:10}}>
-          <h3>{formatDateOnly(e.entryDate)} {moodEmoji(e.mood)}{e.entryDate === todayStr() ? ' · hoje' : ''}</h3>
-          <div style={{fontSize:13.5, color:'var(--ink)', whiteSpace:'pre-wrap'}}>{e.content}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function DocumentsPanel({ psicologoId, patientId }){
-  const [documents, setDocuments] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [editCategory, setEditCategory] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [busyId, setBusyId] = useState(null);
-
-  const refresh = useCallback(async () => {
-    setDocuments(await loadPatientDocuments(patientId));
-  }, [patientId]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  const startEdit = (doc) => {
-    setEditingId(doc.id);
-    setEditCategory(doc.category);
-    setEditDescription(doc.description);
-  };
-
-  const saveEdit = async (id) => {
-    await updatePatientDocument(id, { category: editCategory, description: editDescription });
-    setEditingId(null);
-    await refresh();
-    showToast('Documento atualizado com sucesso.');
-  };
-
-  const openDocument = async (doc) => {
-    const url = await getPatientDocumentUrl(doc.storagePath);
-    if(url) window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const removeDocument = async (doc) => {
-    const ok = window.confirm(`Excluir "${doc.fileName}" definitivamente?`);
-    if(!ok) return;
-    setBusyId(doc.id);
-    await deletePatientDocument(doc.id, doc.storagePath);
-    await refresh();
-    setBusyId(null);
-    showToast('Documento excluído com sucesso.');
-  };
-
-  const formatSize = (bytes) => {
-    if(!bytes) return '';
-    if(bytes < 1024*1024) return `${Math.round(bytes/1024)} KB`;
-    return `${(bytes/(1024*1024)).toFixed(1)} MB`;
-  };
-
-  if(documents === null){
-    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando documentos…</div>;
-  }
-
-  return (
-    <div>
-      {documents.length === 0 ? (
-        <div className="field hint">Nenhum documento enviado por este paciente ainda.</div>
-      ) : documents.map(doc => (
-        <div className="panel" key={doc.id} style={{marginBottom:10}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, flexWrap:'wrap'}}>
-            <div>
-              <button className="btn-link" style={{fontWeight:700, textAlign:'left'}} onClick={()=>openDocument(doc)}>{doc.fileName}</button>
-              <div style={{fontSize:11.5, color:'var(--ink-faint)', marginTop:2}}>
-                {formatDate(doc.createdAt)} · {formatSize(doc.fileSize)} · enviado por {doc.uploadedByRole === 'paciente' ? 'paciente' : 'você'}
-              </div>
-            </div>
-            <button className="icon-btn" title="Excluir" onClick={()=>removeDocument(doc)} disabled={busyId===doc.id}><IconTrash size={14}/></button>
-          </div>
-
-          {editingId === doc.id ? (
-            <div className="form-grid" style={{marginTop:10}}>
-              <div className="field">
-                <label>Categoria</label>
-                <select value={editCategory} onChange={e=>setEditCategory(e.target.value)}>
-                  <option value="">Sem categoria</option>
-                  {DOCUMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="field full">
-                <label>Observação</label>
-                <input value={editDescription} onChange={e=>setEditDescription(e.target.value)} placeholder="Observação sobre o documento" />
-              </div>
-              <div style={{gridColumn:'1 / -1', display:'flex', gap:10}}>
-                <button className="btn-secondary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>setEditingId(null)}>Cancelar</button>
-                <button className="btn-primary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>saveEdit(doc.id)}>Salvar</button>
-              </div>
-            </div>
-          ) : (
-            <div style={{marginTop:8, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
-              {doc.category && <span className="badge badge-ativo">{doc.category}</span>}
-              {doc.description && <span style={{fontSize:12.5, color:'var(--ink-muted)'}}>{doc.description}</span>}
-              <button className="btn-link" onClick={()=>startEdit(doc)}>Categorizar / anotar</button>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash, IconBook } from '../icons.jsx';
 
 function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
@@ -440,37 +181,162 @@ function NoteForm({ sessions, editingNote, onCancel, onSave }){
   };
 
   return (
-    <div className="panel" style={{borderColor:'var(--ink)', borderWidth:1.5}}>
-      <div className="confidential-banner">
-        <IconLock size={14}/> <span>Conteúdo confidencial — nunca é exibido ao paciente.</span>
-      </div>
+    <div className="panel">
+      <h3>{editingNote ? 'Editar nota' : 'Nova nota'}</h3>
       {error && <div className="alert alert-danger">{error}</div>}
-      <div className="field">
-        <label>Nota</label>
-        <textarea value={text} onChange={e=>setText(e.target.value)} style={{minHeight:120}} placeholder="Registre observações clínicas sobre o acompanhamento..." />
+      <div className="field full">
+        <label>Conteúdo</label>
+        <textarea value={text} onChange={e=>setText(e.target.value)} rows={5} placeholder="Registre suas observações clínicas..." />
       </div>
-      <div className="field">
-        <label>Vincular a uma sessão <span style={{fontWeight:400, color:'var(--ink-faint)'}}>(opcional)</span></label>
-        <select value={sessionIdSel} onChange={e=>setSessionIdSel(e.target.value)}>
-          <option value="">Nenhuma sessão específica</option>
-          {sessions.map(s => <option key={s.id} value={s.id}>{formatDateOnly(s.date)} às {s.startTime}</option>)}
-        </select>
-      </div>
-      <div className="field">
+      <div className="field full">
         <label>Tags <span style={{fontWeight:400, color:'var(--ink-faint)'}}>(opcional)</span></label>
         <TagInput tags={tags} onChange={setTags} />
       </div>
+      {sessions.length > 0 && (
+        <div className="field full">
+          <label>Vincular a uma sessão <span style={{fontWeight:400, color:'var(--ink-faint)'}}>(opcional)</span></label>
+          <select value={sessionIdSel} onChange={e=>setSessionIdSel(e.target.value)}>
+            <option value="">Nenhuma sessão específica</option>
+            {sessions.map(s => <option key={s.id} value={s.id}>{formatDateOnly(s.date)} às {s.startTime}</option>)}
+          </select>
+        </div>
+      )}
       <div className="modal-actions">
         <button className="btn-secondary" type="button" onClick={onCancel}>Cancelar</button>
         <button className="btn-primary" type="button" onClick={submit} disabled={busy}>
           {busy && <span className="spinner"/>}
-          {busy ? 'Salvando…' : (editingNote ? 'Salvar alterações' : 'Adicionar nota')}
+          {busy ? 'Salvando…' : (editingNote ? 'Salvar alterações' : 'Criar nota')}
         </button>
       </div>
     </div>
   );
 }
 
+function DocumentsPanel({ psicologoId, patientId }){
+  const [documents, setDocuments] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editCategory, setEditCategory] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [busyId, setBusyId] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setDocuments(await loadPatientDocuments(patientId));
+  }, [patientId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const startEdit = (doc) => {
+    setEditingId(doc.id);
+    setEditCategory(doc.category);
+    setEditDescription(doc.description);
+  };
+
+  const saveEdit = async (id) => {
+    await updatePatientDocument(id, { category: editCategory, description: editDescription });
+    setEditingId(null);
+    await refresh();
+    showToast('Documento atualizado com sucesso.');
+  };
+
+  const openDocument = async (doc) => {
+    const url = await getPatientDocumentUrl(doc.storagePath);
+    if(url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const removeDocument = async (doc) => {
+    const ok = window.confirm(`Excluir "${doc.fileName}" definitivamente?`);
+    if(!ok) return;
+    setBusyId(doc.id);
+    await deletePatientDocument(doc.id, doc.storagePath);
+    await refresh();
+    setBusyId(null);
+    showToast('Documento excluído com sucesso.');
+  };
+
+  const formatSize = (bytes) => {
+    if(!bytes) return '';
+    if(bytes < 1024*1024) return `${Math.round(bytes/1024)} KB`;
+    return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+  };
+
+  if(documents === null){
+    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando documentos…</div>;
+  }
+
+  return (
+    <div>
+      {documents.length === 0 ? (
+        <div className="field hint">Nenhum documento enviado por este paciente ainda.</div>
+      ) : documents.map(doc => (
+        <div className="panel" key={doc.id} style={{marginBottom:10}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, flexWrap:'wrap'}}>
+            <div>
+              <button className="btn-link" style={{fontWeight:700, textAlign:'left'}} onClick={()=>openDocument(doc)}>{doc.fileName}</button>
+              <div style={{fontSize:11.5, color:'var(--ink-faint)', marginTop:2}}>
+                {formatDate(doc.createdAt)} · {formatSize(doc.fileSize)} · enviado por {doc.uploadedByRole === 'paciente' ? 'paciente' : 'você'}
+              </div>
+            </div>
+            <button className="icon-btn" title="Excluir" onClick={()=>removeDocument(doc)} disabled={busyId===doc.id}><IconTrash size={14}/></button>
+          </div>
+
+          {editingId === doc.id ? (
+            <div className="form-grid" style={{marginTop:10}}>
+              <div className="field">
+                <label>Categoria</label>
+                <select value={editCategory} onChange={e=>setEditCategory(e.target.value)}>
+                  <option value="">Sem categoria</option>
+                  {DOCUMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="field full">
+                <label>Observação</label>
+                <input value={editDescription} onChange={e=>setEditDescription(e.target.value)} placeholder="Observação sobre o documento" />
+              </div>
+              <div style={{gridColumn:'1 / -1', display:'flex', gap:10}}>
+                <button className="btn-secondary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>setEditingId(null)}>Cancelar</button>
+                <button className="btn-primary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>saveEdit(doc.id)}>Salvar</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{marginTop:8, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
+              {doc.category && <span className="badge badge-ativo">{doc.category}</span>}
+              {doc.description && <span style={{fontSize:12.5, color:'var(--ink-muted)'}}>{doc.description}</span>}
+              <button className="btn-link" onClick={()=>startEdit(doc)}>Categorizar / anotar</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function JournalPanel({ patientId }){
+  const [entries, setEntries] = useState(null);
+
+  useEffect(() => { loadJournalEntries(patientId).then(setEntries); }, [patientId]);
+
+  if(entries === null){
+    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando diário…</div>;
+  }
+
+  const moodEmoji = (m) => (MOOD_OPTIONS.find(o => o.value === m) || {}).emoji || '';
+
+  return (
+    <div>
+      <div className="alert alert-success" style={{marginBottom:16}}>
+        Conteúdo escrito pelo próprio paciente — somente leitura. Você não pode editar nem excluir entradas do diário.
+      </div>
+      {entries.length === 0 ? (
+        <div className="field hint">Este paciente ainda não registrou nenhuma entrada de diário.</div>
+      ) : entries.map(e => (
+        <div className="panel" key={e.id} style={{marginBottom:10}}>
+          <h3>{formatDateOnly(e.entryDate)} {moodEmoji(e.mood)}{e.entryDate === todayStr() ? ' · hoje' : ''}</h3>
+          <div style={{fontSize:13.5, color:'var(--ink)', whiteSpace:'pre-wrap'}}>{e.content}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
   const [sessions, setSessions] = useState([]);
@@ -478,6 +344,8 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
   const [showForm, setShowForm] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [tab, setTab] = useState('notas'); // notas | diario | documentos
 
   const refresh = useCallback(async () => {
     const [s, n] = await Promise.all([loadSessions(), loadNotes()]);
@@ -527,9 +395,6 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
     showToast('Nota excluída com sucesso.');
   };
 
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [tab, setTab] = useState('notas'); // notas | documentos
-
   const handleExport = async (format, selectedSessions, selectedNotes) => {
     const slug = (patient.name || 'paciente').replace(/\s+/g, '-').toLowerCase();
     if(format === 'docx'){
@@ -565,14 +430,9 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
 
       <div className="subtabs">
         <button className={tab==='notas'?'active':''} onClick={()=>setTab('notas')}>Notas</button>
-        <button className={tab==='tarefas'?'active':''} onClick={()=>setTab('tarefas')}>Tarefas</button>
         <button className={tab==='diario'?'active':''} onClick={()=>setTab('diario')}>Diário</button>
         <button className={tab==='documentos'?'active':''} onClick={()=>setTab('documentos')}>Documentos</button>
       </div>
-
-      {tab === 'tarefas' && (
-        <PatientTasksPanel psicologoId={psicologoId} patient={patient} />
-      )}
 
       {tab === 'diario' && (
         <JournalPanel patientId={patient.id} />
@@ -599,19 +459,23 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
         notes.map(n => {
           const linkedSession = n.sessionId ? sessions.find(s => s.id === n.sessionId) : null;
           return (
-            <div className="note-card" key={n.id}>
-              <div className="note-date">
-                {formatDate(n.createdAt)}{n.updatedAt && n.updatedAt !== n.createdAt ? ' · editado' : ''}
-                {linkedSession ? ` · sessão de ${formatDateOnly(linkedSession.date)}` : ''}
+            <div className="panel" key={n.id}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
+                <div>
+                  <div style={{fontSize:12.5, fontWeight:700}}>{formatDate(n.createdAt)}</div>
+                  {linkedSession && <div style={{fontSize:11.5, color:'var(--ink-faint)', marginTop:2}}>Sessão de {formatDateOnly(linkedSession.date)} às {linkedSession.startTime}</div>}
+                </div>
+                <div style={{display:'flex', gap:10}}>
+                  <button className="btn-link" onClick={()=>{ setEditingNote(n); setShowForm(true); }}>Editar</button>
+                  <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>deleteNote(n)}>Excluir</button>
+                </div>
               </div>
-              <div className="note-text">{n.text}</div>
-              {n.tags.length > 0 && (
-                <div className="note-tags">{n.tags.map(t => <span className="note-tag" key={t}>{t}</span>)}</div>
+              <div style={{fontSize:13.5, color:'var(--ink)', marginTop:8, whiteSpace:'pre-wrap'}}>{n.text}</div>
+              {n.tags && n.tags.length > 0 && (
+                <div style={{marginTop:10, display:'flex', gap:6, flexWrap:'wrap'}}>
+                  {n.tags.map((t,i) => <span key={i} className="badge badge-ativo">{t}</span>)}
+                </div>
               )}
-              <div className="note-actions">
-                <button className="btn-link" onClick={()=>{ setEditingNote(n); setShowForm(true); }}>Editar</button>
-                <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>deleteNote(n)}>Excluir</button>
-              </div>
             </div>
           );
         })
@@ -626,59 +490,56 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
   );
 }
 
-
 function SessoesNotasPsicologo({ psicologoId, currentUserId }){
   const [patients, setPatients] = useState(null);
-  const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
-  const refresh = useCallback(async () => {
-    const p = await loadPatients();
-    setPatients(p.filter(x => x.psicologoId === psicologoId && x.status === 'ativo'));
+  useEffect(() => {
+    (async () => {
+      const p = await loadPatients();
+      setPatients(p.filter(x => x.psicologoId === psicologoId && x.status === 'ativo'));
+    })();
   }, [psicologoId]);
 
-  useEffect(() => { refresh(); }, [refresh]);
-
-  if(selected){
-    return <PatientRecordView patient={selected} psicologoId={psicologoId} currentUserId={currentUserId} onBack={()=>setSelected(null)} />;
-  }
-
   if(patients === null){
-    return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>;
+    return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando pacientes…</div>;
   }
+
+  if(selectedPatient){
+    return <PatientRecordView patient={selectedPatient} psicologoId={psicologoId} currentUserId={currentUserId} onBack={()=>setSelectedPatient(null)} />;
+  }
+
+  const filtered = patients.filter(p => (p.socialName||p.name).toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div>
-      <div className="confidential-banner">
-        <IconLock size={15}/> <span>Prontuários e notas privadas — acesso restrito a você.</span>
+      <div className="toolbar">
+        <input className="search-input" placeholder="Buscar paciente" value={query} onChange={e=>setQuery(e.target.value)} />
       </div>
-      {patients.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="empty-state">
           <div className="icon-wrap"><IconUsers size={24}/></div>
           <h2>Nenhum paciente ativo</h2>
-          <p>Cadastre pacientes em "Pacientes" para começar a registrar sessões e notas.</p>
+          <p>Cadastre um paciente ativo para começar a registrar sessões e notas.</p>
         </div>
       ) : (
-        <div className="patient-list">
-          {patients.map(p => {
-            const initials = p.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
-            return (
-              <div className="patient-row" key={p.id} style={{cursor:'pointer'}} onClick={()=>setSelected(p)}>
-                <div className="p-avatar">{initials}</div>
-                <div className="p-main">
-                  <div className="p-name">{p.socialName || p.name}</div>
-                  <div className="p-sub">{p.email}</div>
-                </div>
-                <IconChevronRight size={16} color="var(--ink-faint)" />
+        filtered.map(p => {
+          const initials = p.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
+          return (
+            <div className="patient-row" key={p.id} style={{cursor:'pointer'}} onClick={()=>setSelectedPatient(p)}>
+              <div className="p-avatar">{initials}</div>
+              <div className="p-main">
+                <div className="p-name">{p.socialName || p.name}</div>
+                <div className="p-sub">{p.email}</div>
               </div>
-            );
-          })}
-        </div>
+              <IconChevronRight size={16} color="var(--ink-faint)" />
+            </div>
+          );
+        })
       )}
     </div>
   );
 }
-
-/* ---------- Homework tasks — psicólogo (US-011) ---------- */
-
 
 export { SessoesNotasPsicologo };

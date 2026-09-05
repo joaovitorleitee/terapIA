@@ -735,6 +735,18 @@ async function saveTasks(tasks){
   const { error } = await supabase.from('tasks').upsert(tasks.map(taskToRow), { onConflict:'id' });
   logDbError('saveTasks', error);
 }
+// UPDATE de verdade (não upsert) — necessário para o paciente, que tem permissão de UPDATE mas
+// nunca de INSERT em tasks; um upsert exige as duas permissões mesmo quando a linha já existe.
+async function updateTaskFields(id, patch){
+  const row = {};
+  if(patch.status !== undefined) row.status = patch.status;
+  if(patch.patientResponse !== undefined) row.patient_response = patch.patientResponse;
+  if(patch.patientLinks !== undefined) row.patient_links = patch.patientLinks;
+  if(patch.history !== undefined) row.history = patch.history;
+  const { error } = await supabase.from('tasks').update(row).eq('id', id);
+  logDbError('updateTaskFields', error);
+  return !error;
+}
 async function deleteTask(id){
   const { error } = await supabase.from('tasks').delete().eq('id', id);
   logDbError('deleteTask', error);
@@ -992,7 +1004,7 @@ export {
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
   loadNotes, saveNotes, noteId,
   MOOD_OPTIONS, loadJournalEntries, saveJournalEntry,
-  DOCUMENT_CATEGORIES, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, updatePatientDocument, deletePatientDocument, loadTasks, saveTasks, deleteTask, taskId,
+  DOCUMENT_CATEGORIES, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, updatePatientDocument, deletePatientDocument, loadTasks, saveTasks, updateTaskFields, deleteTask, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
   EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,

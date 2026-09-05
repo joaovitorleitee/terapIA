@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { loadPatients, loadTasks, saveTasks, pushNotification, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadPatients, loadTasks, updateTaskFields, pushNotification, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { showToast } from '../../lib/toast.js';
 import { TagInput } from '../shared.jsx';
 import { IconTask, IconUserPlus } from '../icons.jsx';
@@ -116,18 +116,17 @@ function MinhasTarefasPaciente({ user }){
   useEffect(() => { refresh(); }, [refresh]);
 
   const updateTask = async (task, patch) => {
-    const all = await loadTasks();
     const now = new Date().toISOString();
-    const updated = all.map(t => {
-      if(t.id !== task.id) return t;
-      const next = { ...t, ...patch };
-      delete next.skipStatusHistory;
-      if(!patch.skipStatusHistory && patch.status && patch.status !== t.status){
-        next.history = [...(t.history||[]), { status:patch.status, changedAt:now, by:'paciente' }];
-      }
-      return next;
-    });
-    await saveTasks(updated);
+    const fields = { patientResponse: patch.patientResponse, patientLinks: patch.patientLinks };
+    if(!patch.skipStatusHistory && patch.status && patch.status !== task.status){
+      fields.status = patch.status;
+      fields.history = [...(task.history||[]), { status:patch.status, changedAt:now, by:'paciente' }];
+    }
+    const ok = await updateTaskFields(task.id, fields);
+    if(!ok){
+      showToast('Não foi possível salvar. Tente novamente.');
+      return;
+    }
     if(patch.status && patch.status !== task.status){
       await pushNotification(task.psicologoId, {
         type:'tarefa',
