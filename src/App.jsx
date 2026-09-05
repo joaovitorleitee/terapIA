@@ -7,7 +7,7 @@ import {
   SESSION_TIMEOUT_MS, TERMS_VERSION, todayStr,
 } from './lib/dataStore.js';
 import { NAV_PSICOLOGO, NAV_PACIENTE, SECTION_META } from './lib/navConfig.js';
-import { IconSparkle, IconMail, IconChevronDown, IconClockRewind, IconLock } from './components/icons.jsx';
+import { IconSparkle, IconMail, IconChevronDown, IconClockRewind, IconLock, IconPlus } from './components/icons.jsx';
 import { LoginScreen, RegisterScreen, ForgotPasswordScreen, ConsentGateScreen, RoleSelectScreen, LinkConfirmScreen } from './components/auth.jsx';
 import { TermsModal } from './components/shared.jsx';
 import { NotificationsBell, AccountMenu, ProfileSettingsModal, PrivacyModal } from './components/layout.jsx';
@@ -36,6 +36,7 @@ function App(){
   const [taskFocusId, setTaskFocusId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [patientRecord, setPatientRecord] = useState(null);
@@ -319,15 +320,37 @@ function App(){
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav — no máximo 4 itens principais + "Mais" pra não espremer demais numa tela pequena */}
       <nav className="mobile-nav">
-        {nav.map(item => (
-          <button key={item.key} className={section===item.key?'active':''} onClick={()=>{ setTaskFocusId(null); setSection(item.key); }}>
+        {nav.slice(0,4).map(item => (
+          <button key={item.key} className={section===item.key?'active':''} onClick={()=>{ setTaskFocusId(null); setSection(item.key); setMobileMoreOpen(false); }}>
             <item.icon size={19} />
             {item.label.split(' ')[0]}
           </button>
         ))}
+        {nav.length > 4 && (
+          <button className={mobileMoreOpen || nav.slice(4).some(i=>i.key===section) ? 'active' : ''} onClick={()=>setMobileMoreOpen(o=>!o)}>
+            <IconPlus size={19} style={{transform: mobileMoreOpen ? 'rotate(45deg)' : 'none'}} />
+            Mais
+          </button>
+        )}
       </nav>
+
+      {mobileMoreOpen && (
+        <div className="mobile-more-overlay" onClick={()=>setMobileMoreOpen(false)}>
+          <div className="mobile-more-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="mobile-more-grid">
+              {nav.slice(4).map(item => (
+                <button key={item.key} className={section===item.key?'active':''}
+                        onClick={()=>{ setTaskFocusId(null); setSection(item.key); setMobileMoreOpen(false); }}>
+                  <item.icon size={20} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProfile && role === 'psicologo' && (
         <ProfileSettingsModal psicologoId={currentUser.id} onClose={()=>setShowProfile(false)} />

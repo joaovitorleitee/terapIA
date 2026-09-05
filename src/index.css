@@ -281,6 +281,53 @@
       color: var(--ink-faint); font-size:10.5px; font-weight:600;
     }
     .mobile-nav button.active{ color: var(--primary-dark); }
+
+    /* Painel "Mais" — resto dos itens de navegação que não cabem na barra inferior */
+    .mobile-more-overlay{
+      position:fixed; inset:0; background:rgba(30,42,34,0.45); z-index:15;
+      display:flex; align-items:flex-end;
+    }
+    .mobile-more-sheet{
+      width:100%; background:var(--surface); border-radius:20px 20px 0 0;
+      padding:20px 16px calc(20px + env(safe-area-inset-bottom)) 16px;
+      box-shadow:0 -10px 30px rgba(0,0,0,0.15);
+    }
+    .mobile-more-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .mobile-more-grid button{
+      display:flex; flex-direction:column; align-items:center; gap:6px;
+      background:var(--surface-alt); border:none; border-radius:14px; padding:16px 8px;
+      color:var(--ink-muted); font-size:11.5px; font-weight:600; cursor:pointer;
+    }
+    .mobile-more-grid button.active{ background:var(--primary-soft); color:var(--primary-dark); }
+
+    /* Grades e formulários em coluna única */
+    .form-grid{ grid-template-columns:1fr !important; }
+    .grid-cards{ grid-template-columns:1fr !important; }
+    .widget-grid{ justify-content:center; }
+    .widget-square{ width:100%; max-width:220px; }
+    .filter-pills{ flex-wrap:wrap; }
+    .task-card .tc-actions{ flex-wrap:wrap; row-gap:8px; }
+
+    /* Modais ocupando a tela pequena sem sobra de espaço */
+    .modal-overlay{ padding:10px; align-items:flex-end; }
+    .modal-box{ padding:20px; max-height:88vh; border-radius:20px 20px 0 0; }
+    .modal-box img{ max-width:100%; height:auto; }
+
+    /* Editor de disponibilidade semanal — empilha em vez de espremer numa linha só */
+    .day-row{ flex-wrap:wrap; row-gap:8px; }
+    .day-row .day-label{ width:100%; }
+
+    /* Navegação do calendário — rótulo do mês não força largura mínima grande */
+    .cal-nav .cal-label{ min-width:0; flex:1; }
+
+    /* Agenda semanal — mantém colunas usáveis e rola só essa área, não a página inteira */
+    .cal-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .cal-week-grid{ grid-template-columns:44px repeat(7, minmax(84px,1fr)); width:max-content; min-width:100%; }
+    .cal-week-head{ grid-template-columns:44px repeat(7, minmax(84px,1fr)); width:max-content; min-width:100%; }
+
+    /* Abas (Financeiro, Sessões & Notas etc.) — rolam na horizontal só ali, nunca a página inteira */
+    .subtabs{ overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; }
+    .subtabs button{ white-space:nowrap; flex-shrink:0; }
   }
 
   /* ---------- Auth screens ---------- */
