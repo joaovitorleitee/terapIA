@@ -33,6 +33,10 @@ function formatDateOnly(iso){
     return `${d}/${m}/${y}`;
   }catch(e){ return iso; }
 }
+// O Postgres devolve colunas do tipo "time" como "HH:MM:SS" — a interface inteira só precisa de HH:MM.
+function trimSeconds(hhmmss){
+  return hhmmss ? hhmmss.slice(0,5) : hhmmss;
+}
 function logDbError(where, error){
   if(error) console.error(`[dataStore] ${where}:`, error.message || error);
 }
@@ -118,7 +122,7 @@ async function saveAvailability(psicologoId, availability){
 }
 
 function rowToBlock(r){
-  return { id:r.id, psicologoId:r.psicologo_id, type:r.type, date:r.date, startDate:r.start_date, endDate:r.end_date, startTime:r.start_time, endTime:r.end_time, label:r.label };
+  return { id:r.id, psicologoId:r.psicologo_id, type:r.type, date:r.date, startDate:r.start_date, endDate:r.end_date, startTime:trimSeconds(r.start_time), endTime:trimSeconds(r.end_time), label:r.label };
 }
 function blockToRow(b){
   return {
@@ -150,7 +154,7 @@ async function saveBlocks(blocks){
 
 function rowToSession(r){
   return {
-    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, date:r.date, startTime:r.start_time,
+    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, date:r.date, startTime:trimSeconds(r.start_time),
     durationMin:r.duration_min, modalidade:r.modalidade, status:r.status, valor: Number(r.valor),
     reason:r.reason, cancelledAt:r.cancelled_at, cancelledBy:r.cancelled_by, pendingRelease:r.pending_release,
     isLateCancel: r.is_late_cancel, chargeType:r.charge_type, chargePercent:r.charge_percent,
