@@ -1,9 +1,108 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import { jsPDF } from 'jspdf';
-import { loadSessions, loadNotes, saveNotes, noteId, pushAudit, formatDate, formatDateOnly, loadPatients } from '../../lib/dataStore.js';
+import {
+  loadSessions, loadNotes, saveNotes, noteId, pushAudit, formatDate, formatDateOnly, loadPatients,
+  DOCUMENT_CATEGORIES, loadPatientDocuments, updatePatientDocument, deletePatientDocument, getPatientDocumentUrl,
+} from '../../lib/dataStore.js';
 import { TagInput } from '../shared.jsx';
-import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers } from '../icons.jsx';
+import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash } from '../icons.jsx';
+
+function DocumentsPanel({ psicologoId, patientId }){
+  const [documents, setDocuments] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editCategory, setEditCategory] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [busyId, setBusyId] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setDocuments(await loadPatientDocuments(patientId));
+  }, [patientId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const startEdit = (doc) => {
+    setEditingId(doc.id);
+    setEditCategory(doc.category);
+    setEditDescription(doc.description);
+  };
+
+  const saveEdit = async (id) => {
+    await updatePatientDocument(id, { category: editCategory, description: editDescription });
+    setEditingId(null);
+    await refresh();
+  };
+
+  const openDocument = async (doc) => {
+    const url = await getPatientDocumentUrl(doc.storagePath);
+    if(url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const removeDocument = async (doc) => {
+    const ok = window.confirm(`Excluir "${doc.fileName}" definitivamente?`);
+    if(!ok) return;
+    setBusyId(doc.id);
+    await deletePatientDocument(doc.id, doc.storagePath);
+    await refresh();
+    setBusyId(null);
+  };
+
+  const formatSize = (bytes) => {
+    if(!bytes) return '';
+    if(bytes < 1024*1024) return `${Math.round(bytes/1024)} KB`;
+    return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+  };
+
+  if(documents === null){
+    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando documentos…</div>;
+  }
+
+  return (
+    <div>
+      {documents.length === 0 ? (
+        <div className="field hint">Nenhum documento enviado por este paciente ainda.</div>
+      ) : documents.map(doc => (
+        <div className="panel" key={doc.id} style={{marginBottom:10}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, flexWrap:'wrap'}}>
+            <div>
+              <button className="btn-link" style={{fontWeight:700, textAlign:'left'}} onClick={()=>openDocument(doc)}>{doc.fileName}</button>
+              <div style={{fontSize:11.5, color:'var(--ink-faint)', marginTop:2}}>
+                {formatDate(doc.createdAt)} · {formatSize(doc.fileSize)} · enviado por {doc.uploadedByRole === 'paciente' ? 'paciente' : 'você'}
+              </div>
+            </div>
+            <button className="icon-btn" title="Excluir" onClick={()=>removeDocument(doc)} disabled={busyId===doc.id}><IconTrash size={14}/></button>
+          </div>
+
+          {editingId === doc.id ? (
+            <div className="form-grid" style={{marginTop:10}}>
+              <div className="field">
+                <label>Categoria</label>
+                <select value={editCategory} onChange={e=>setEditCategory(e.target.value)}>
+                  <option value="">Sem categoria</option>
+                  {DOCUMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="field full">
+                <label>Observação</label>
+                <input value={editDescription} onChange={e=>setEditDescription(e.target.value)} placeholder="Observação sobre o documento" />
+              </div>
+              <div style={{gridColumn:'1 / -1', display:'flex', gap:10}}>
+                <button className="btn-secondary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>setEditingId(null)}>Cancelar</button>
+                <button className="btn-primary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>saveEdit(doc.id)}>Salvar</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{marginTop:8, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
+              {doc.category && <span className="badge badge-ativo">{doc.category}</span>}
+              {doc.description && <span style={{fontSize:12.5, color:'var(--ink-muted)'}}>{doc.description}</span>}
+              <button className="btn-link" onClick={()=>startEdit(doc)}>Categorizar / anotar</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
@@ -261,6 +360,7 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
   };
 
   const [showExportModal, setShowExportModal] = useState(false);
+  const [tab, setTab] = useState('notas'); // notas | documentos
 
   const handleExport = async (format, selectedSessions, selectedNotes) => {
     const slug = (patient.name || 'paciente').replace(/\s+/g, '-').toLowerCase();
@@ -288,12 +388,23 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
         <h2 style={{margin:0, fontSize:19}}>{patient.socialName || patient.name}</h2>
         <div style={{display:'flex', gap:8}}>
           <button className="btn-secondary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>setShowExportModal(true)}>Exportar prontuário</button>
-          {!showForm && (
+          {tab==='notas' && !showForm && (
             <button className="btn-new" onClick={()=>{ setEditingNote(null); setShowForm(true); }}><IconPlus size={15}/> Nova nota</button>
           )}
         </div>
       </div>
 
+      <div className="subtabs">
+        <button className={tab==='notas'?'active':''} onClick={()=>setTab('notas')}>Notas</button>
+        <button className={tab==='documentos'?'active':''} onClick={()=>setTab('documentos')}>Documentos</button>
+      </div>
+
+      {tab === 'documentos' && (
+        <DocumentsPanel psicologoId={psicologoId} patientId={patient.id} />
+      )}
+
+      {tab === 'notas' && (
+      <React.Fragment>
       {showForm && (
         <NoteForm sessions={sessions} editingNote={editingNote}
                   onCancel={()=>{ setShowForm(false); setEditingNote(null); }} onSave={saveNote} />
@@ -325,6 +436,8 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
             </div>
           );
         })
+      )}
+      </React.Fragment>
       )}
 
       {showExportModal && (

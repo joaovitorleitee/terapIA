@@ -22,6 +22,7 @@ import InicioPaciente from './components/paciente/Dashboard.jsx';
 import { MinhasSessoesPaciente } from './components/paciente/Sessions.jsx';
 import { MinhasTarefasPaciente } from './components/paciente/Tasks.jsx';
 import PagamentosPaciente from './components/paciente/Payments.jsx';
+import { DocumentosPaciente } from './components/paciente/Documents.jsx';
 
 function App(){
   const [authView, setAuthView] = useState('select-role'); // select-role | login | register | forgot
@@ -213,6 +214,7 @@ function App(){
     if(role === 'paciente' && section === 'inicio') return <InicioPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'minhas-sessoes') return <MinhasSessoesPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'minhas-tarefas') return <MinhasTarefasPaciente user={currentUser} />;
+    if(role === 'paciente' && section === 'documentos') return <DocumentosPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'pagamentos') return <PagamentosPaciente user={currentUser} />;
     return <EmptyState builtBy={meta.builtBy} />;
   };

@@ -582,6 +582,60 @@ async function saveNotes(notes){
 }
 const noteId = uuid;
 
+/* ================= Documentos do paciente (US-034/US-035) ================= */
+const DOCUMENT_CATEGORIES = ['Exame', 'Atestado', 'Documento pessoal', 'Outro'];
+const DOCUMENT_MAX_SIZE = 20 * 1024 * 1024; // 20MB — mesmo limite configurado no bucket
+const DOCUMENT_ALLOWED_TYPES = ['application/pdf','image/jpeg','image/png','image/webp','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+
+function rowToDocument(r){
+  return {
+    id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, uploadedByRole:r.uploaded_by_role,
+    storagePath:r.storage_path, fileName:r.file_name, mimeType:r.mime_type, fileSize:r.file_size,
+    category:r.category || '', description:r.description || '', createdAt:r.created_at,
+  };
+}
+async function loadPatientDocuments(patientId){
+  const { data, error } = await supabase.from('patient_documents').select('*').eq('patient_id', patientId).order('created_at', { ascending:false });
+  logDbError('loadPatientDocuments', error);
+  return data ? data.map(rowToDocument) : [];
+}
+// file: objeto File do navegador. Caminho segue {psicologoId}/{patientId}/{timestamp}-{nome} —
+// as policies de storage exigem exatamente essa estrutura de pastas.
+async function uploadPatientDocument({ psicologoId, patientId, uploadedByRole, file, category, description }){
+  if(file.size > DOCUMENT_MAX_SIZE) return { error: 'Arquivo maior que 20MB.' };
+  if(DOCUMENT_ALLOWED_TYPES.length && !DOCUMENT_ALLOWED_TYPES.includes(file.type)) return { error: 'Tipo de arquivo não permitido. Envie PDF, imagem (JPG/PNG/WEBP) ou Word.' };
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const path = `${psicologoId}/${patientId}/${Date.now()}-${safeName}`;
+  const { error: uploadError } = await supabase.storage.from('patient-documents').upload(path, file);
+  if(uploadError) return { error: 'Não foi possível enviar o arquivo agora.' };
+  const { data, error } = await supabase.from('patient_documents').insert({
+    psicologo_id: psicologoId, patient_id: patientId, uploaded_by_role: uploadedByRole,
+    storage_path: path, file_name: file.name, mime_type: file.type, file_size: file.size,
+    category: category || null, description: description || null,
+  }).select().single();
+  logDbError('uploadPatientDocument (metadata)', error);
+  if(error) return { error: 'Arquivo enviado, mas não foi possível salvar as informações dele.' };
+  return { document: rowToDocument(data) };
+}
+async function getPatientDocumentUrl(storagePath){
+  const { data, error } = await supabase.storage.from('patient-documents').createSignedUrl(storagePath, 300); // 5 min
+  logDbError('getPatientDocumentUrl', error);
+  return data ? data.signedUrl : null;
+}
+async function updatePatientDocument(id, patch){
+  const row = {};
+  if(patch.category !== undefined) row.category = patch.category || null;
+  if(patch.description !== undefined) row.description = patch.description || null;
+  const { error } = await supabase.from('patient_documents').update(row).eq('id', id);
+  logDbError('updatePatientDocument', error);
+}
+async function deletePatientDocument(id, storagePath){
+  await supabase.storage.from('patient-documents').remove([storagePath]);
+  const { error } = await supabase.from('patient_documents').delete().eq('id', id);
+  logDbError('deletePatientDocument', error);
+}
+
+
 /* ================= Tarefas de casa ================= */
 function rowToTask(r){
   return {
@@ -864,7 +918,8 @@ export {
   defaultCancelPolicy, loadCancelPolicy, saveCancelPolicy, cancelPolicyText,
   loadNotificationsFor, saveNotificationsFor, pushNotificationFor,
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
-  loadNotes, saveNotes, noteId, loadTasks, saveTasks, deleteTask, taskId,
+  loadNotes, saveNotes, noteId,
+  DOCUMENT_CATEGORIES, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, updatePatientDocument, deletePatientDocument, loadTasks, saveTasks, deleteTask, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
   EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,
