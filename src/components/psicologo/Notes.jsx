@@ -1,7 +1,155 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import { jsPDF } from 'jspdf';
 import { loadSessions, loadNotes, saveNotes, noteId, pushAudit, formatDate, formatDateOnly, loadPatients } from '../../lib/dataStore.js';
 import { TagInput } from '../shared.jsx';
 import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers } from '../icons.jsx';
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function buildProntuarioDocx(patient, sessions, selectedNotes){
+  const children = [
+    new Paragraph({ text: `Prontuário — ${patient.socialName || patient.name}`, heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: `Exportado em ${formatDate(new Date().toISOString())}`, spacing:{ after:240 } }),
+    new Paragraph({ text: 'Sessões', heading: HeadingLevel.HEADING_2, spacing:{ after:120 } }),
+  ];
+  if(sessions.length === 0){
+    children.push(new Paragraph('Nenhuma sessão registrada.'));
+  } else {
+    sessions.forEach(s => {
+      children.push(new Paragraph(`${formatDateOnly(s.date)} ${s.startTime} — ${s.status} — ${s.modalidade || 'Presencial'}`));
+    });
+  }
+  children.push(new Paragraph({ text: 'Notas privadas', heading: HeadingLevel.HEADING_2, spacing:{ before:320, after:120 } }));
+  if(selectedNotes.length === 0){
+    children.push(new Paragraph('Nenhuma nota selecionada para esta exportação.'));
+  } else {
+    selectedNotes.forEach(n => {
+      children.push(new Paragraph({
+        spacing:{ before:220, after:60 },
+        children: [
+          new TextRun({ text: formatDate(n.createdAt), bold: true }),
+          ...(n.tags && n.tags.length ? [new TextRun({ text: '  (' + n.tags.join(', ') + ')', italics:true, color:'888888' })] : []),
+        ],
+      }));
+      children.push(new Paragraph({ text: n.text, spacing:{ after:120 } }));
+    });
+  }
+  const doc = new Document({ sections: [{ children }] });
+  return Packer.toBlob(doc);
+}
+
+function buildProntuarioPdf(patient, sessions, selectedNotes){
+  const doc = new jsPDF();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginBottom = 20;
+  let y = 20;
+  const ensureSpace = (needed) => { if(y + needed > pageHeight - marginBottom){ doc.addPage(); y = 20; } };
+
+  doc.setFontSize(16);
+  doc.text(`Prontuário — ${patient.socialName || patient.name}`, 15, y); y += 8;
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Exportado em ${formatDate(new Date().toISOString())}`, 15, y); y += 10;
+  doc.setTextColor(20);
+
+  doc.setFontSize(13); doc.text('Sessões', 15, y); y += 7;
+  doc.setFontSize(10);
+  if(sessions.length === 0){ ensureSpace(6); doc.text('Nenhuma sessão registrada.', 15, y); y += 6; }
+  sessions.forEach(s => {
+    ensureSpace(6);
+    doc.text(`${formatDateOnly(s.date)} ${s.startTime} — ${s.status} — ${s.modalidade || 'Presencial'}`, 15, y);
+    y += 6;
+  });
+  y += 6;
+
+  doc.setFontSize(13); ensureSpace(10); doc.text('Notas privadas', 15, y); y += 7;
+  doc.setFontSize(10);
+  if(selectedNotes.length === 0){ ensureSpace(6); doc.text('Nenhuma nota selecionada para esta exportação.', 15, y); y += 6; }
+  selectedNotes.forEach(n => {
+    ensureSpace(8);
+    doc.setFont(undefined, 'bold');
+    doc.text(`${formatDate(n.createdAt)}${n.tags && n.tags.length ? '  (' + n.tags.join(', ') + ')' : ''}`, 15, y);
+    doc.setFont(undefined, 'normal');
+    y += 6;
+    const lines = doc.splitTextToSize(n.text, 180);
+    lines.forEach(line => { ensureSpace(6); doc.text(line, 15, y); y += 6; });
+    y += 4;
+  });
+  return doc.output('blob');
+}
+
+function ExportRecordModal({ patient, notes, onClose, onExported }){
+  const [selectedIds, setSelectedIds] = useState(() => new Set(notes.map(n => n.id)));
+  const [format, setFormat] = useState('docx');
+  const [busy, setBusy] = useState(false);
+
+  const toggle = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if(next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const doExport = async () => {
+    setBusy(true);
+    try{
+      const selectedNotes = notes.filter(n => selectedIds.has(n.id));
+      await onExported(format, selectedNotes);
+      onClose();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box form-modal" style={{maxHeight:'85vh', overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <h3>Exportar prontuário</h3>
+        <div className="field full" style={{marginBottom:14}}>
+          <label>Formato</label>
+          <div className="filter-pills">
+            <button type="button" className={'filter-pill '+(format==='docx'?'active':'')} onClick={()=>setFormat('docx')}>Word (.docx)</button>
+            <button type="button" className={'filter-pill '+(format==='pdf'?'active':'')} onClick={()=>setFormat('pdf')}>PDF</button>
+          </div>
+        </div>
+        <div className="field full">
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+            <label style={{margin:0}}>Notas a incluir ({selectedIds.size} de {notes.length})</label>
+            <div style={{display:'flex', gap:12}}>
+              <button type="button" className="btn-link" onClick={()=>setSelectedIds(new Set(notes.map(n=>n.id)))}>Selecionar todas</button>
+              <button type="button" className="btn-link" onClick={()=>setSelectedIds(new Set())}>Limpar</button>
+            </div>
+          </div>
+          {notes.length === 0 ? (
+            <div className="field hint">Nenhuma nota registrada para este paciente.</div>
+          ) : (
+            <div style={{maxHeight:280, overflowY:'auto', border:'1px solid var(--border)', borderRadius:10, padding:4}}>
+              {notes.map(n => (
+                <label key={n.id} style={{display:'flex', gap:8, alignItems:'flex-start', padding:'8px 8px', borderBottom:'1px solid var(--border)', cursor:'pointer'}}>
+                  <input type="checkbox" checked={selectedIds.has(n.id)} onChange={()=>toggle(n.id)} style={{marginTop:3}} />
+                  <span>
+                    <div style={{fontSize:12.5, fontWeight:700}}>{formatDate(n.createdAt)}{n.tags && n.tags.length ? ' · '+n.tags.join(', ') : ''}</div>
+                    <div style={{fontSize:12, color:'var(--ink-muted)'}}>{n.text.length > 90 ? n.text.slice(0,90)+'…' : n.text}</div>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="modal-actions" style={{marginTop:16}}>
+          <button className="btn-secondary" type="button" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" type="button" onClick={doExport} disabled={busy}>
+            {busy && <span className="spinner"/>}
+            {busy ? 'Gerando…' : 'Exportar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function NoteForm({ sessions, editingNote, onCancel, onSave }){
   const [text, setText] = useState(editingNote?.text || '');
@@ -108,28 +256,17 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
     await refresh();
   };
 
-  const exportRecord = async () => {
-    const lines = [];
-    lines.push(`Prontuário — ${patient.socialName || patient.name}`);
-    lines.push(`Exportado em ${formatDate(new Date().toISOString())}`);
-    lines.push('');
-    lines.push('== Sessões ==');
-    if(sessions.length === 0) lines.push('Nenhuma sessão registrada.');
-    sessions.forEach(s => lines.push(`${formatDateOnly(s.date)} ${s.startTime} — ${s.status} — ${s.modalidade || 'Presencial'}`));
-    lines.push('');
-    lines.push('== Notas privadas ==');
-    if(notes.length === 0) lines.push('Nenhuma nota registrada.');
-    notes.forEach(n => {
-      lines.push(`[${formatDate(n.createdAt)}]${n.tags.length ? ' ('+n.tags.join(', ')+')' : ''}`);
-      lines.push(n.text);
-      lines.push('');
-    });
-    const blob = new Blob([lines.join('\n')], { type:'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `prontuario-${(patient.name||'paciente').replace(/\s+/g,'-').toLowerCase()}.txt`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const [showExportModal, setShowExportModal] = useState(false);
+
+  const handleExport = async (format, selectedNotes) => {
+    const slug = (patient.name || 'paciente').replace(/\s+/g, '-').toLowerCase();
+    if(format === 'docx'){
+      const blob = await buildProntuarioDocx(patient, sessions, selectedNotes);
+      downloadBlob(blob, `prontuario-${slug}.docx`);
+    } else {
+      const blob = buildProntuarioPdf(patient, sessions, selectedNotes);
+      downloadBlob(blob, `prontuario-${slug}.pdf`);
+    }
     await pushAudit({ userId: currentUserId, action:'prontuario_exportado', patientId: patient.id });
   };
 
@@ -146,7 +283,7 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10}}>
         <h2 style={{margin:0, fontSize:19}}>{patient.socialName || patient.name}</h2>
         <div style={{display:'flex', gap:8}}>
-          <button className="btn-secondary" style={{width:'auto', padding:'8px 14px'}} onClick={exportRecord}>Exportar prontuário</button>
+          <button className="btn-secondary" style={{width:'auto', padding:'8px 14px'}} onClick={()=>setShowExportModal(true)}>Exportar prontuário</button>
           {!showForm && (
             <button className="btn-new" onClick={()=>{ setEditingNote(null); setShowForm(true); }}><IconPlus size={15}/> Nova nota</button>
           )}
@@ -184,6 +321,10 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
             </div>
           );
         })
+      )}
+
+      {showExportModal && (
+        <ExportRecordModal patient={patient} notes={notes} onClose={()=>setShowExportModal(false)} onExported={handleExport} />
       )}
     </div>
   );
