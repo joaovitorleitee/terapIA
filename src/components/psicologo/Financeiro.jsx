@@ -4,7 +4,8 @@ import {
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS,
   loadReceipts, saveReceipts, receiptId, generateReceiptPDF,
   loadPatients, loadSessions, formatCurrency, formatDateOnly, todayStr,
-  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,
+  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId,
+  loadProfessionalProfile,
   pushAudit,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconWallet, IconTrash } from '../icons.jsx';
@@ -73,7 +74,11 @@ function ReceiptsPanel({ psicologoId }){
   const reissue = async (receipt) => {
     const all = await loadReceipts();
     const number = 'REC-' + String(all.filter(r=>r.psicologoId===psicologoId).length + 1).padStart(4, '0');
-    const newReceipt = { ...receipt, id: receiptId(), number, status:'emitido', issuedAt:new Date().toISOString(), supersedes:receipt.number };
+    const profile = await loadProfessionalProfile(psicologoId);
+    const newReceipt = {
+      ...receipt, id: receiptId(), number, status:'emitido', issuedAt:new Date().toISOString(), supersedes:receipt.number,
+      professionalCrp: profile.crp || '', professionalDocument: profile.cpfCnpj || '',
+    };
     await saveReceipts([...all, newReceipt]);
     await pushAudit({ userId: psicologoId, action:'recibo_emitido', patientId: receipt.patientId });
     generateReceiptPDF(newReceipt);
@@ -192,21 +197,13 @@ function ExpenseFormModal({ onClose, onSave }){
   );
 }
 
-function RelatorioPanel({ psicologoId }){
-  const [charges, setCharges] = useState(null);
-  const [expenses, setExpenses] = useState([]);
-  const [patients, setPatients] = useState([]);
-  const [periodPreset, setPeriodPreset] = useState('mes-atual'); // mes-atual | mes-anterior | personalizado
-  const [customStart, setCustomStart] = useState(monthRange(0).start);
-  const [customEnd, setCustomEnd] = useState(monthRange(0).end);
-  const [patientFilter, setPatientFilter] = useState('all');
+function DespesasPanel({ psicologoId }){
+  const [expenses, setExpenses] = useState(null);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [c, e, p] = await Promise.all([loadCharges(), loadExpenses(), loadPatients()]);
-    setCharges(c.filter(x => x.psicologoId === psicologoId));
-    setExpenses(e.filter(x => x.psicologoId === psicologoId));
-    setPatients(p.filter(x => x.psicologoId === psicologoId));
+    const e = await loadExpenses();
+    setExpenses(e.filter(x => x.psicologoId === psicologoId).sort((a,b) => b.date.localeCompare(a.date)));
   }, [psicologoId]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -223,83 +220,33 @@ function RelatorioPanel({ psicologoId }){
     await refresh();
   };
 
-  if(charges === null){
-    return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>;
+  if(expenses === null){
+    return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando despesas…</div>;
   }
-
-  let periodStart, periodEnd;
-  if(periodPreset === 'mes-atual'){ ({ start:periodStart, end:periodEnd } = monthRange(0)); }
-  else if(periodPreset === 'mes-anterior'){ ({ start:periodStart, end:periodEnd } = monthRange(-1)); }
-  else { periodStart = customStart; periodEnd = customEnd; }
-
-  const chargesInScope = charges.filter(c => patientFilter === 'all' || c.patientId === patientFilter);
-
-  let receitaRecebida = 0;
-  chargesInScope.forEach(c => {
-    (c.payments || []).forEach(p => {
-      if(p.date && p.date >= periodStart && p.date <= periodEnd) receitaRecebida += Number(p.amount) || 0;
-    });
-  });
-
-  const receitaPrevista = chargesInScope
-    .filter(c => (c.status === 'pendente' || c.status === 'parcial'))
-    .filter(c => !c.dueDate || (c.dueDate >= periodStart && c.dueDate <= periodEnd))
-    .reduce((sum, c) => sum + (c.amount - (c.paidAmount || 0)), 0);
-
-  const expensesInPeriod = expenses.filter(e => expenseAppliesToPeriod(e, periodStart, periodEnd));
-  const totalDespesas = expensesInPeriod.reduce((sum, e) => sum + e.amount, 0);
-
-  const lucroLiquido = receitaRecebida - totalDespesas;
 
   return (
     <div>
       <div className="toolbar">
-        <div className="filter-pills">
-          <button className={'filter-pill '+(periodPreset==='mes-atual'?'active':'')} onClick={()=>setPeriodPreset('mes-atual')}>Mês atual</button>
-          <button className={'filter-pill '+(periodPreset==='mes-anterior'?'active':'')} onClick={()=>setPeriodPreset('mes-anterior')}>Mês anterior</button>
-          <button className={'filter-pill '+(periodPreset==='personalizado'?'active':'')} onClick={()=>setPeriodPreset('personalizado')}>Personalizado</button>
-        </div>
-        <select value={patientFilter} onChange={e=>setPatientFilter(e.target.value)}>
-          <option value="all">Todos os pacientes</option>
-          {patients.map(p => <option key={p.id} value={p.id}>{p.socialName||p.name}</option>)}
-        </select>
+        <div className="field hint" style={{flex:1}}>Registre aqui as despesas do consultório. Elas alimentam o cálculo de lucro em Relatórios.</div>
+        <button className="btn-new" onClick={()=>setShowExpenseForm(true)}><IconPlus size={15}/> Nova despesa</button>
       </div>
 
-      {periodPreset === 'personalizado' && (
-        <div className="inline-fields" style={{marginBottom:16}}>
-          <div className="field">
-            <label>De</label>
-            <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Até</label>
-            <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} />
-          </div>
+      {expenses.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon-wrap"><IconWallet size={24}/></div>
+          <h2>Nenhuma despesa registrada</h2>
+          <p>Cadastre aluguel, material, marketing e outras despesas do consultório.</p>
+        </div>
+      ) : (
+        <div className="panel">
+          {expenses.map(e => (
+            <div className="quick-charge-row" key={e.id}>
+              <span>{e.category}{e.description ? ' — '+e.description : ''} · {formatDateOnly(e.date)} · {formatCurrency(e.amount)}{e.recurrence==='mensal' ? ' (mensal)' : ''}</span>
+              <button className="icon-btn" title="Excluir" onClick={()=>removeExpense(e.id)}><IconTrash size={14}/></button>
+            </div>
+          ))}
         </div>
       )}
-
-      <div className="grid-cards" style={{marginBottom:20}}>
-        <div className="stat-card"><div className="stat-label">Receita recebida</div><div className="stat-value" style={{fontSize:20}}>{formatCurrency(receitaRecebida)}</div></div>
-        <div className="stat-card"><div className="stat-label">Receita prevista</div><div className="stat-value" style={{fontSize:20}}>{formatCurrency(receitaPrevista)}</div></div>
-        <div className="stat-card"><div className="stat-label">Despesas</div><div className="stat-value" style={{fontSize:20}}>{formatCurrency(totalDespesas)}</div></div>
-        <div className="stat-card"><div className="stat-label">Lucro líquido</div><div className="stat-value" style={{fontSize:20, color: lucroLiquido>=0 ? 'var(--primary-dark)' : 'var(--danger)'}}>{formatCurrency(lucroLiquido)}</div></div>
-      </div>
-
-      <div className="panel">
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-          <h3 style={{margin:0}}>Despesas</h3>
-          <button className="btn-new" onClick={()=>setShowExpenseForm(true)}><IconPlus size={15}/> Nova despesa</button>
-        </div>
-        <div className="panel-sub">Despesas mensais contam automaticamente em todo período igual ou posterior à data de cadastro.</div>
-        {expensesInPeriod.length === 0 ? (
-          <div className="field hint">Nenhuma despesa neste período.</div>
-        ) : expensesInPeriod.map(e => (
-          <div className="quick-charge-row" key={e.id}>
-            <span>{e.category}{e.description ? ' — '+e.description : ''} · {formatDateOnly(e.date)} · {formatCurrency(e.amount)}{e.recurrence==='mensal' ? ' (mensal)' : ''}</span>
-            <button className="icon-btn" title="Excluir" onClick={()=>removeExpense(e.id)}><IconTrash size={14}/></button>
-          </div>
-        ))}
-      </div>
 
       {showExpenseForm && (
         <ExpenseFormModal onClose={()=>setShowExpenseForm(false)} onSave={addExpense} />
@@ -315,13 +262,13 @@ function FinanceiroPsicologo({ psicologoId, professionalName }){
       <div className="subtabs">
         <button className={tab==='recebimentos'?'active':''} onClick={()=>setTab('recebimentos')}>Recebimentos</button>
         <button className={tab==='recibos'?'active':''} onClick={()=>setTab('recibos')}>Recibos</button>
-        <button className={tab==='relatorio'?'active':''} onClick={()=>setTab('relatorio')}>Relatório</button>
+        <button className={tab==='despesas'?'active':''} onClick={()=>setTab('despesas')}>Despesas</button>
         <button className={tab==='precos'?'active':''} onClick={()=>setTab('precos')}>Preços</button>
       </div>
       {tab === 'precos' && <PrecosPanel psicologoId={psicologoId} />}
       {tab === 'recebimentos' && <RecebimentosPanel psicologoId={psicologoId} professionalName={professionalName} />}
       {tab === 'recibos' && <ReceiptsPanel psicologoId={psicologoId} />}
-      {tab === 'relatorio' && <RelatorioPanel psicologoId={psicologoId} />}
+      {tab === 'despesas' && <DespesasPanel psicologoId={psicologoId} />}
     </div>
   );
 }
@@ -490,9 +437,11 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     const patient = patients.find(p => p.id === charge.patientId);
     const allReceipts = await loadReceipts();
     const number = 'REC-' + String(allReceipts.filter(r=>r.psicologoId===psicologoId).length + 1).padStart(4, '0');
+    const profile = await loadProfessionalProfile(psicologoId);
     const newReceipt = {
       id: receiptId(), psicologoId, chargeId: charge.id, patientId: charge.patientId, number,
       professionalName, patientName: patient ? (patient.socialName||patient.name) : 'Paciente',
+      professionalCrp: profile.crp || '', professionalDocument: profile.cpfCnpj || '',
       service: charge.description, date: charge.dueDate || todayStr(), amount: charge.paidAmount || charge.amount,
       status:'emitido', issuedAt:new Date().toISOString(), supersedes:null,
     };

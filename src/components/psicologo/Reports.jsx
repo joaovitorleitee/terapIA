@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import {
   loadSessions, loadCharges, loadExpenses, loadPatients,
   formatCurrency, formatDateOnly, todayStr, monthRange, expenseAppliesToPeriod,
@@ -66,6 +67,36 @@ function RelatoriosPsicologo({ psicologoId }){
     .sort((a,b) => b.total - a.total);
   const totalInadimplencia = inadimplenciaList.reduce((sum, i) => sum + i.total, 0);
 
+  const exportToExcel = () => {
+    const workbook = XLSX.utils.book_new();
+
+    const summarySheet = XLSX.utils.json_to_sheet([
+      { 'Indicador':'Receita no período', 'Valor': receita },
+      { 'Indicador':'Despesas no período', 'Valor': despesas },
+      { 'Indicador':'Lucro líquido', 'Valor': lucro },
+      { 'Indicador':'Inadimplência total', 'Valor': totalInadimplencia },
+    ]);
+    summarySheet['!cols'] = [{ wch: 26 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumo');
+
+    const statusRows = Object.entries(statusCounts).map(([status, count]) => ({
+      'Status': SESSION_STATUS_LABEL[status] || status, 'Quantidade': count,
+    }));
+    const statusSheet = XLSX.utils.json_to_sheet(statusRows.length ? statusRows : [{ 'Status':'', 'Quantidade':'' }]);
+    statusSheet['!cols'] = [{ wch: 20 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(workbook, statusSheet, 'Sessões por status');
+
+    const inadimplenciaRows = inadimplenciaList.map(i => ({
+      'Paciente': i.patient ? (i.patient.socialName || i.patient.name) : 'Paciente removido',
+      'Valor em aberto': i.total,
+    }));
+    const inadimplenciaSheet = XLSX.utils.json_to_sheet(inadimplenciaRows.length ? inadimplenciaRows : [{ 'Paciente':'', 'Valor em aberto':'' }]);
+    inadimplenciaSheet['!cols'] = [{ wch: 28 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, inadimplenciaSheet, 'Inadimplência');
+
+    XLSX.writeFile(workbook, `relatorio-terapia-${todayStr()}.xlsx`);
+  };
+
   return (
     <div>
       <div className="toolbar">
@@ -74,6 +105,7 @@ function RelatoriosPsicologo({ psicologoId }){
           <button className={'filter-pill '+(periodPreset==='mes-anterior'?'active':'')} onClick={()=>setPeriodPreset('mes-anterior')}>Mês anterior</button>
           <button className={'filter-pill '+(periodPreset==='personalizado'?'active':'')} onClick={()=>setPeriodPreset('personalizado')}>Personalizado</button>
         </div>
+        <button className="btn-new" onClick={exportToExcel}>Exportar para Excel</button>
       </div>
 
       {periodPreset === 'personalizado' && (
@@ -125,8 +157,6 @@ function RelatoriosPsicologo({ psicologoId }){
           </div>
         ))}
       </div>
-
-      <div className="field hint" style={{textAlign:'center', marginTop:8}}>Exportação em CSV/PDF chega em uma próxima atualização.</div>
     </div>
   );
 }

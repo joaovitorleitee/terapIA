@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  loadTasks, saveTasks, taskId, loadPatients, loadSessions, pushPatientNotification, formatDateOnly, formatDate, todayStr,
+  loadTasks, saveTasks, deleteTask, taskId, loadPatients, loadSessions, pushPatientNotification, formatDateOnly, formatDate, todayStr,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
 } from '../../lib/dataStore.js';
 import { TagInput } from '../shared.jsx';
@@ -341,6 +341,13 @@ function TarefasPsicologo({ psicologoId }){
     await refresh();
   };
 
+  const removeTask = async (task) => {
+    const ok = window.confirm(`Excluir a tarefa "${task.title}" definitivamente? Essa ação não pode ser desfeita.`);
+    if(!ok) return;
+    await deleteTask(task.id);
+    await refresh();
+  };
+
   if(tasks === null){
     return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando tarefas…</div>;
   }
@@ -441,6 +448,7 @@ function TarefasPsicologo({ psicologoId }){
                     <button className="btn-link" style={{color: t.status==='cancelada' ? 'var(--primary-dark)' : 'var(--danger)'}} onClick={()=>toggleCancel(t)}>
                       {t.status === 'cancelada' ? 'Reativar' : 'Cancelar tarefa'}
                     </button>
+                    <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>removeTask(t)}>Excluir</button>
                   </div>
                 </div>
               );

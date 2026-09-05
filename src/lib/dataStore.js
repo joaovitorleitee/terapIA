@@ -562,6 +562,10 @@ async function saveTasks(tasks){
   const { error } = await supabase.from('tasks').upsert(tasks.map(taskToRow), { onConflict:'id' });
   logDbError('saveTasks', error);
 }
+async function deleteTask(id){
+  const { error } = await supabase.from('tasks').delete().eq('id', id);
+  logDbError('deleteTask', error);
+}
 const taskId = uuid;
 
 /* ================= Biblioteca de modelos de tarefa ================= */
@@ -662,6 +666,7 @@ function rowToReceipt(r){
   return {
     id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, chargeId:r.charge_id,
     number:r.number, professionalName:r.professional_name, patientName:r.patient_name, service:r.service,
+    professionalCrp: r.professional_crp || '', professionalDocument: r.professional_document || '',
     date:r.date, amount: Number(r.amount), status:r.status, supersedes:r.supersedes, issuedAt:r.issued_at,
   };
 }
@@ -669,6 +674,7 @@ function receiptToRow(rc){
   return {
     id:rc.id, psicologo_id:rc.psicologoId, patient_id:rc.patientId, charge_id:rc.chargeId || null,
     number:rc.number, professional_name:rc.professionalName, patient_name:rc.patientName, service:rc.service,
+    professional_crp: rc.professionalCrp || null, professional_document: rc.professionalDocument || null,
     date:rc.date, amount:rc.amount, status:rc.status || 'emitido', supersedes:rc.supersedes || null,
   };
 }
@@ -690,6 +696,8 @@ function downloadTextFallbackReceipt(receipt){
     `Nº ${receipt.number}${receipt.status==='cancelado' ? ' — CANCELADO' : ''}`,
     '',
     `Profissional: ${receipt.professionalName}`,
+    receipt.professionalCrp ? `CRP: ${receipt.professionalCrp}` : '',
+    receipt.professionalDocument ? `CPF/CNPJ: ${receipt.professionalDocument}` : '',
     `Paciente: ${receipt.patientName}`,
     `Serviço: ${receipt.service}`,
     `Data do atendimento: ${formatDateOnly(receipt.date)}`,
@@ -720,6 +728,8 @@ function generateReceiptPDF(receipt){
     let y = 46;
     const line = (label, value) => { doc.text(`${label}: ${value}`, 20, y); y += 9; };
     line('Profissional', receipt.professionalName);
+    if(receipt.professionalCrp) line('CRP', receipt.professionalCrp);
+    if(receipt.professionalDocument) line('CPF/CNPJ', receipt.professionalDocument);
     line('Paciente', receipt.patientName);
     line('Serviço', receipt.service);
     line('Data do atendimento', formatDateOnly(receipt.date));
@@ -806,7 +816,7 @@ export {
   defaultCancelPolicy, loadCancelPolicy, saveCancelPolicy, cancelPolicyText,
   loadNotificationsFor, saveNotificationsFor, pushNotificationFor,
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
-  loadNotes, saveNotes, noteId, loadTasks, saveTasks, taskId,
+  loadNotes, saveNotes, noteId, loadTasks, saveTasks, deleteTask, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,
   EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,
