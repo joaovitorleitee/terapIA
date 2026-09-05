@@ -4,7 +4,7 @@ import {
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS,
   loadReceipts, saveReceipts, receiptId, generateReceiptPDF,
   loadPatients, loadSessions, formatCurrency, formatDateOnly, todayStr,
-  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod,
+  EXPENSE_CATEGORIES, loadExpenses, saveExpenses, deleteExpense, expenseId, expenseAppliesToPeriod, monthRange,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconWallet, IconTrash } from '../icons.jsx';
 
@@ -187,15 +187,6 @@ function ExpenseFormModal({ onClose, onSave }){
       </div>
     </div>
   );
-}
-
-function monthRange(offset = 0){
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const start = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
-  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
-  const end = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
-  return { start, end };
 }
 
 function RelatorioPanel({ psicologoId }){

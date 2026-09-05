@@ -1,4 +1,4 @@
-import { IconHome, IconCalendar, IconUsers, IconNote, IconTask, IconWallet } from '../components/icons.jsx';
+import { IconHome, IconCalendar, IconUsers, IconNote, IconTask, IconWallet, IconBarChart } from '../components/icons.jsx';
 
 const NAV_PSICOLOGO = [
   { key:'painel', label:'Painel', icon: IconHome },
@@ -7,6 +7,7 @@ const NAV_PSICOLOGO = [
   { key:'sessoes', label:'Sessões & Notas', icon: IconNote },
   { key:'tarefas', label:'Tarefas de casa', icon: IconTask },
   { key:'financeiro', label:'Financeiro', icon: IconWallet },
+  { key:'relatorios', label:'Relatórios', icon: IconBarChart },
 ];
 const NAV_PACIENTE = [
   { key:'inicio', label:'Início', icon: IconHome },
@@ -22,6 +23,7 @@ const SECTION_META = {
   sessoes:     { title:'Sessões & Notas', subtitle:'Registro clínico e notas privadas', builtBy:null },
   tarefas:     { title:'Tarefas de casa', subtitle:'Atividades individualizadas por paciente', builtBy:null },
   financeiro:  { title:'Financeiro', subtitle:'Preços, recebimentos e recibos', builtBy:null },
+  relatorios:  { title:'Relatórios', subtitle:'Sessões, receita, inadimplência e lucro', builtBy:null },
   inicio:      { title:'Início', subtitle:'Bem-vindo(a) de volta', builtBy:null },
   'minhas-sessoes': { title:'Minhas sessões', subtitle:'Próximas consultas e histórico', builtBy:null },
   'minhas-tarefas': { title:'Minhas tarefas', subtitle:'Suas atividades entre sessões', builtBy:null },

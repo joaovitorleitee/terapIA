@@ -16,6 +16,7 @@ import { AgendaPsicologo } from './components/psicologo/Agenda.jsx';
 import { SessoesNotasPsicologo } from './components/psicologo/Notes.jsx';
 import { TarefasPsicologo } from './components/psicologo/Tasks.jsx';
 import { FinanceiroPsicologo } from './components/psicologo/Financeiro.jsx';
+import { RelatoriosPsicologo } from './components/psicologo/Reports.jsx';
 import InicioPaciente from './components/paciente/Dashboard.jsx';
 import { MinhasSessoesPaciente } from './components/paciente/Sessions.jsx';
 import { MinhasTarefasPaciente } from './components/paciente/Tasks.jsx';
@@ -205,6 +206,7 @@ function App(){
     if(role === 'psicologo' && section === 'sessoes') return <SessoesNotasPsicologo psicologoId={currentUser.id} currentUserId={currentUser.id} />;
     if(role === 'psicologo' && section === 'tarefas') return <TarefasPsicologo psicologoId={currentUser.id} />;
     if(role === 'psicologo' && section === 'financeiro') return <FinanceiroPsicologo psicologoId={currentUser.id} professionalName={currentUser.name} />;
+    if(role === 'psicologo' && section === 'relatorios') return <RelatoriosPsicologo psicologoId={currentUser.id} />;
     if(role === 'paciente' && section === 'inicio') return <InicioPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'minhas-sessoes') return <MinhasSessoesPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'minhas-tarefas') return <MinhasTarefasPaciente user={currentUser} />;
