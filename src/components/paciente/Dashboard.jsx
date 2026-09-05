@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalInfoPublic, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalInfoPublic, getProfessionalPhotoUrl, fetchProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { TermsModal } from '../shared.jsx';
+import { IconUsers } from '../icons.jsx';
 
 function InicioPaciente({ user }){
   const [showTerms, setShowTerms] = useState(false);
@@ -10,14 +11,15 @@ function InicioPaciente({ user }){
   const [completedTasks, setCompletedTasks] = useState(0);
   const [openCharges, setOpenCharges] = useState(0);
   const [professional, setProfessional] = useState(null);
+  const [professionalName, setProfessionalName] = useState('');
 
   useEffect(() => {
     (async () => {
       const allPatients = await loadPatients();
       const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
       if(record){
-        const [sessions, tasks, charges, prof] = await Promise.all([
-          loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId),
+        const [sessions, tasks, charges, prof, psi] = await Promise.all([
+          loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId), fetchProfile(record.psicologoId),
         ]);
         const mySessions = sessions
           .filter(s => s.patientId === record.id && s.date >= todayStr() && ['confirmada','pendente','agendada'].includes(s.status))
@@ -28,7 +30,8 @@ function InicioPaciente({ user }){
         setCompletedTasks(myTasks.filter(t => t.status === 'concluida').length);
         const myCharges = charges.filter(c => c.patientId === record.id && (c.status === 'pendente' || c.status === 'parcial'));
         setOpenCharges(myCharges.length);
-        if(prof && (prof.specialty || prof.bio)) setProfessional(prof);
+        if(psi) setProfessionalName(psi.name);
+        if(prof) setProfessional(prof);
       }
       setLoading(false);
     })();
@@ -62,9 +65,23 @@ function InicioPaciente({ user }){
       </div>
       {professional && (
         <div className="stat-card" style={{marginTop:16}}>
-          <div className="stat-label" style={{marginBottom:6}}>Sobre seu psicólogo(a)</div>
-          {professional.specialty && <div style={{fontSize:13, fontWeight:600, marginBottom:4}}>{professional.specialty}</div>}
-          {professional.bio && <div style={{fontSize:13, color:'var(--ink-muted)', lineHeight:1.6}}>{professional.bio}</div>}
+          <div className="stat-label" style={{marginBottom:10}}>Sobre seu psicólogo(a)</div>
+          <div style={{display:'flex', alignItems:'center', gap:14}}>
+            <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', background:'var(--primary-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+              {professional.photoPath
+                ? <img src={getProfessionalPhotoUrl(professional.photoPath)} alt={professionalName} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                : <IconUsers size={24} color="var(--primary-dark)" />}
+            </div>
+            <div>
+              {professionalName && <div style={{fontSize:15, fontWeight:700, color:'var(--ink)'}}>{professionalName}</div>}
+              <div style={{fontSize:12, color:'var(--ink-faint)'}}>
+                {professional.crp && <span>CRP {professional.crp}</span>}
+                {professional.crp && professional.specialty && <span> · </span>}
+                {professional.specialty && <span>{professional.specialty}</span>}
+              </div>
+            </div>
+          </div>
+          {professional.bio && <div style={{fontSize:13, color:'var(--ink-muted)', lineHeight:1.6, marginTop:10}}>{professional.bio}</div>}
         </div>
       )}
       <div className="stat-card" style={{marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>

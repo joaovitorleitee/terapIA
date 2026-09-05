@@ -3,8 +3,9 @@ import {
   loadNotificationsFor, saveNotificationsFor, loadThemeColor, saveThemeColor, applyTheme, THEME_PALETTES, formatDate,
   TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
   loadDataRightsConfig, saveDataRightsConfig, exportMyData, loadMyDeletionRequests, createDeletionRequest,
+  getProfessionalPhotoUrl, uploadProfessionalPhoto,
 } from '../lib/dataStore.js';
-import { IconBell, IconEdit, IconLogOut, IconCheckCircle, IconShield } from './icons.jsx';
+import { IconBell, IconEdit, IconLogOut, IconCheckCircle, IconShield, IconUsers } from './icons.jsx';
 
 function NotificationsBell({ ownerId, namespace='notifications' }){
   const [open, setOpen] = useState(false);
@@ -68,12 +69,17 @@ function ProfileSettingsModal({ psicologoId, onClose }){
   const [profile, setProfile] = useState(defaultProfessionalProfile());
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState('idle');
+  const [photoUrl, setPhotoUrl] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = React.useRef(null);
 
   useEffect(() => {
     (async () => {
       const [key, prof] = await Promise.all([loadThemeColor(psicologoId), loadProfessionalProfile(psicologoId)]);
       setSelected(key);
       setProfile(prof);
+      setPhotoUrl(getProfessionalPhotoUrl(prof.photoPath));
       setLoaded(true);
     })();
   }, [psicologoId]);
@@ -91,6 +97,19 @@ function ProfileSettingsModal({ psicologoId, onClose }){
     await saveProfessionalProfile(psicologoId, profile);
     setSaveState('saved');
     setTimeout(() => setSaveState('idle'), 1500);
+  };
+
+  const handlePhotoChosen = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    setPhotoError('');
+    setPhotoUploading(true);
+    const result = await uploadProfessionalPhoto(psicologoId, file);
+    setPhotoUploading(false);
+    if(result.error){ setPhotoError(result.error); return; }
+    setProfile(p => ({ ...p, photoPath: result.photoPath }));
+    setPhotoUrl(getProfessionalPhotoUrl(result.photoPath) + '?t=' + Date.now()); // evita cache do navegador na mesma URL
   };
 
   return (
@@ -125,6 +144,20 @@ function ProfileSettingsModal({ psicologoId, onClose }){
           <div>
             <div className="field hint" style={{marginBottom:14}}>Essas informações ajudam o paciente a te conhecer melhor.</div>
             {saveState !== 'idle' && <div className="alert alert-success" style={{display:'inline-flex'}}>{saveState==='saving'?'Salvando…':'Salvo.'}</div>}
+
+            <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:18}}>
+              <div style={{width:64, height:64, borderRadius:'50%', overflow:'hidden', background:'var(--primary-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                {photoUrl ? <img src={photoUrl} alt="Foto de perfil" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <IconUsers size={26} color="var(--primary-dark)" />}
+              </div>
+              <div>
+                <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}} onChange={handlePhotoChosen} />
+                <button className="btn-secondary" type="button" style={{width:'auto', padding:'8px 14px'}} onClick={()=>photoInputRef.current.click()} disabled={photoUploading}>
+                  {photoUploading ? 'Enviando…' : 'Trocar foto'}
+                </button>
+                {photoError && <div className="field-error" style={{marginTop:6}}>{photoError}</div>}
+              </div>
+            </div>
+
             <div className="form-grid">
               <div className="field">
                 <label>Registro no conselho (CRP)</label>
@@ -139,7 +172,6 @@ function ProfileSettingsModal({ psicologoId, onClose }){
                 <textarea value={profile.bio} onChange={set('bio')} placeholder="Um breve resumo sobre sua abordagem e experiência" />
               </div>
             </div>
-            <div className="field hint">Foto de perfil ainda não está disponível — chega em uma próxima atualização.</div>
             <div className="modal-actions" style={{marginTop:14}}>
               <button className="btn-primary" type="button" onClick={saveProfile}>Salvar</button>
             </div>

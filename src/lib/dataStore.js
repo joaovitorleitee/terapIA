@@ -228,7 +228,7 @@ async function loadProfessionalProfile(psicologoId){
   const fiscal = fiscalRes.data || {};
   return {
     crp: info.crp || '', specialty: info.specialty || '', bio: info.bio || '',
-    city: info.city || '', pixKey: info.pix_key || '',
+    city: info.city || '', pixKey: info.pix_key || '', photoPath: info.photo_path || '',
     cpfCnpj: fiscal.cpf_cnpj || '', taxRegime: fiscal.tax_regime || '',
     bankName: fiscal.bank_name || '', bankAgency: fiscal.bank_agency || '', bankAccount: fiscal.bank_account || '',
   };
@@ -250,12 +250,31 @@ async function saveProfessionalProfile(psicologoId, profile){
   logDbError('saveProfessionalProfile (info)', infoRes.error);
   logDbError('saveProfessionalProfile (fiscal)', fiscalRes.error);
 }
-// Usado pelo paciente — especialidade/apresentação/cidade/chave Pix, nunca CPF/CNPJ ou dados bancários
+function getProfessionalPhotoUrl(photoPath){
+  if(!photoPath) return null;
+  const { data } = supabase.storage.from('professional-photos').getPublicUrl(photoPath);
+  return data ? data.publicUrl : null;
+}
+async function uploadProfessionalPhoto(psicologoId, file){
+  if(file.size > 5*1024*1024) return { error: 'A foto precisa ter até 5MB.' };
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${psicologoId}/photo-${Date.now()}.${ext}`;
+  const { error: uploadError } = await supabase.storage.from('professional-photos').upload(path, file, {
+    contentType: file.type || 'image/jpeg', upsert: true,
+  });
+  if(uploadError){ logDbError('uploadProfessionalPhoto (storage)', uploadError); return { error: uploadError.message }; }
+  const { error } = await supabase.from('professional_info').upsert(
+    { psicologo_id: psicologoId, photo_path: path, updated_at: new Date().toISOString() }, { onConflict:'psicologo_id' }
+  );
+  if(error){ logDbError('uploadProfessionalPhoto (metadata)', error); return { error: error.message }; }
+  return { photoPath: path };
+}
+// Usado pelo paciente — especialidade/apresentação/cidade/chave Pix/foto, nunca CPF/CNPJ ou dados bancários
 // (essas ficam só em professional_profile, tabela sem nenhuma policy de paciente).
 async function loadProfessionalInfoPublic(psicologoId){
-  const { data, error } = await supabase.from('professional_info').select('crp, specialty, bio, city, pix_key').eq('psicologo_id', psicologoId).maybeSingle();
+  const { data, error } = await supabase.from('professional_info').select('crp, specialty, bio, city, pix_key, photo_path').eq('psicologo_id', psicologoId).maybeSingle();
   logDbError('loadProfessionalInfoPublic', error);
-  return data ? { crp: data.crp || '', specialty: data.specialty || '', bio: data.bio || '', city: data.city || '', pixKey: data.pix_key || '' } : null;
+  return data ? { crp: data.crp || '', specialty: data.specialty || '', bio: data.bio || '', city: data.city || '', pixKey: data.pix_key || '', photoPath: data.photo_path || '' } : null;
 }
 // Usado para liberar cobrança digital (US-017) e nota fiscal (US-019) no futuro — ambas ainda não construídas.
 function hasCompleteFiscalData(profile){
@@ -941,7 +960,7 @@ export {
   DEFAULT_SESSION_PRICE, formatCurrency,
   THEME_PALETTES, loadThemeColor, saveThemeColor, applyTheme,
   TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
-  loadProfessionalInfoPublic, hasCompleteFiscalData,
+  loadProfessionalInfoPublic, hasCompleteFiscalData, getProfessionalPhotoUrl, uploadProfessionalPhoto,
   buildPixPayload, generatePixQrDataUrl,
   loadDataRightsConfig, saveDataRightsConfig, exportMyData,
   loadMyDeletionRequests, loadDeletionRequestsForPsicologo, createDeletionRequest, resolveDeletionRequest,
