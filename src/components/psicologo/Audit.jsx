@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { loadAuditLog, loadPatients, formatDate } from '../../lib/dataStore.js';
+import * as XLSX from 'xlsx';
+import { loadAuditLog, loadPatients, formatDate, todayStr } from '../../lib/dataStore.js';
 import { IconHistory } from '../icons.jsx';
 
 const ACTION_LABELS = {
@@ -40,6 +41,25 @@ function AuditoriaPsicologo({ psicologoId }){
   const actionTypes = Array.from(new Set(logs.map(l => l.action)));
   const filtered = logs.filter(l => actionFilter === 'all' || l.action === actionFilter);
 
+  const exportToExcel = () => {
+    const rows = filtered
+      .slice()
+      .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .map(l => {
+        const patient = l.patientId ? patients.find(p => p.id === l.patientId) : null;
+        return {
+          'Data e hora': formatDate(l.timestamp),
+          'Ação': ACTION_LABELS[l.action] || l.action,
+          'Paciente': patient ? (patient.socialName || patient.name) : '—',
+        };
+      });
+    const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Data e hora':'', 'Ação':'', 'Paciente':'' }]);
+    sheet['!cols'] = [{ wch: 20 }, { wch: 30 }, { wch: 28 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Auditoria');
+    XLSX.writeFile(workbook, `auditoria-terapia-${todayStr()}.xlsx`);
+  };
+
   return (
     <div>
       <div className="alert alert-success" style={{marginBottom:16}}>
@@ -51,6 +71,9 @@ function AuditoriaPsicologo({ psicologoId }){
           <option value="all">Todas as ações</option>
           {actionTypes.map(a => <option key={a} value={a}>{ACTION_LABELS[a] || a}</option>)}
         </select>
+        <button className="btn-new" onClick={exportToExcel} disabled={filtered.length === 0}>
+          Exportar para Excel
+        </button>
       </div>
 
       {filtered.length === 0 ? (
