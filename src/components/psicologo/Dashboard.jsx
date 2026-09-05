@@ -81,7 +81,7 @@ function PainelPsicologo({ psicologoId, name }){
               <div className="mini-session-row" key={s.id}>
                 <span>{s.startTime} · {patientName(s.patientId)}</span>
                 <div style={{display:'flex', alignItems:'center', gap:8}}>
-                  {s.modalidade === 'Online' && meetingLink && (
+                  {meetingLink && (
                     <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-flex', alignItems:'center', gap:4}}>
                       <IconCalendar size={13}/> Entrar na sessão
                     </a>

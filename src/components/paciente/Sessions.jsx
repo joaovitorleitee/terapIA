@@ -442,7 +442,7 @@ function MinhasSessoesPaciente({ user }){
             <div>
               <div className="sc-date">{formatDateOnly(s.date)} às {s.startTime}</div>
               <div className="sc-meta">{s.durationMin} min · {s.modalidade || 'Presencial'}</div>
-              {s.modalidade === 'Online' && availability && availability.meetingLink && ['confirmada','agendada'].includes(s.status) && (
+              {availability && availability.meetingLink && ['confirmada','agendada'].includes(s.status) && (
                 <a href={availability.meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
                   Entrar na sessão →
                 </a>

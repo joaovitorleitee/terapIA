@@ -81,7 +81,7 @@ function InicioPaciente({ user }){
           <div className="stat-value" style={{fontSize: nextSession ? 17 : 28}}>
             {loading ? '—' : (nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma agendada')}
           </div>
-          {nextSession && nextSession.modalidade === 'Online' && meetingLink && (
+          {nextSession && meetingLink && (
             <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
               Entrar na sessão →
             </a>
