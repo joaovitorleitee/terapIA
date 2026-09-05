@@ -3,7 +3,7 @@ import {
   loadPatients, loadSessions, loadTasks, loadCharges, loadAvailability, loadProfessionalInfoPublic,
   getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr,
   loadPatientDocuments, loadJournalEntries, loadReceipts,
-  WIDGET_CATALOG_PACIENTE, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget, formatCurrency,
+  WIDGET_CATALOG_PACIENTE, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget,
 } from '../../lib/dataStore.js';
 import { TermsModal, WidgetPickerModal } from '../shared.jsx';
 import { IconUsers } from '../icons.jsx';
@@ -11,7 +11,6 @@ import { IconUsers } from '../icons.jsx';
 function InicioPaciente({ user }){
   const [showTerms, setShowTerms] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [patientRecord, setPatientRecord] = useState(null);
   const [nextSession, setNextSession] = useState(null);
   const [activeTasks, setActiveTasks] = useState(0);
   const [completedTasks, setCompletedTasks] = useState(0);
@@ -29,7 +28,6 @@ function InicioPaciente({ user }){
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
     const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
-    setPatientRecord(record || null);
     const me = await fetchProfile(user.id);
     if(me) setMyPhotoPath(me.photoPath);
     const widgets = await loadDashboardWidgets(user.id);
@@ -53,7 +51,6 @@ function InicioPaciente({ user }){
       if(psi) setProfessionalName(psi.name);
       if(prof) setProfessional(prof);
 
-      // Sequência de dias seguidos de diário, contando a partir da entrada mais recente.
       const sortedJournal = [...journal].sort((a,b) => b.entryDate.localeCompare(a.entryDate));
       let streak = 0;
       if(sortedJournal.length){
@@ -135,11 +132,11 @@ function InicioPaciente({ user }){
         <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>
       ) : (
         <React.Fragment>
-          <div className="widget-grid">
-            <div className="widget-square">
-              <div className="widget-label">Próxima sessão</div>
-              <div className="widget-value" style={{fontSize: nextSession ? 16 : 26}}>
-                {nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma'}
+          <div className="grid-cards">
+            <div className="stat-card">
+              <div className="stat-label">Próxima sessão</div>
+              <div className="stat-value" style={{fontSize: nextSession ? 17 : 28}}>
+                {nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma agendada'}
               </div>
               {nextSession && meetingLink && (
                 <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
@@ -147,29 +144,24 @@ function InicioPaciente({ user }){
                 </a>
               )}
             </div>
-
-            <div className="widget-square">
-              <div className="widget-label">Tarefas ativas</div>
-              <div className="widget-value">{activeTasks}</div>
+            <div className="stat-card">
+              <div className="stat-label">Tarefas ativas</div>
+              <div className="stat-value">{activeTasks}</div>
             </div>
-
-            <div className="widget-square">
-              <div className="widget-label">Tarefas concluídas</div>
-              <div className="widget-value">{completedTasks}</div>
+            <div className="stat-card">
+              <div className="stat-label">Tarefas concluídas</div>
+              <div className="stat-value">{completedTasks}</div>
             </div>
-
             {overdueCharges > 0 && (
-              <div className="widget-square danger">
-                <div className="widget-label">Cobranças vencidas</div>
-                <div className="widget-value">{overdueCharges}</div>
+              <div className="stat-card danger">
+                <div className="stat-label">Cobranças vencidas</div>
+                <div className="stat-value">{overdueCharges}</div>
               </div>
             )}
-
-            {widgetKeys.map(renderExtraWidget)}
           </div>
 
           {professional && (
-            <div className="stat-card" style={{marginTop:4}}>
+            <div className="stat-card" style={{marginTop:16}}>
               <div className="stat-label" style={{marginBottom:10}}>Sobre seu psicólogo(a)</div>
               <div style={{display:'flex', alignItems:'center', gap:14}}>
                 <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', background:'var(--primary-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
@@ -199,6 +191,12 @@ function InicioPaciente({ user }){
             </div>
             <button className="btn-link" onClick={()=>setShowTerms(true)}>Ver termos</button>
           </div>
+
+          {widgetKeys.length > 0 && (
+            <div className="widget-grid" style={{marginTop:20}}>
+              {widgetKeys.map(renderExtraWidget)}
+            </div>
+          )}
         </React.Fragment>
       )}
 

@@ -246,6 +246,9 @@
   }
   .stat-card .stat-label{ font-size:12px; color:var(--ink-muted); font-weight:600; }
   .stat-card .stat-value{ font-family:'Fraunces',serif; font-size:28px; margin-top:6px; color:var(--ink); }
+  .stat-card.danger{ background:var(--danger-soft); border-color:rgba(179,85,74,0.35); }
+  .stat-card.danger .stat-label{ color:#7A362C; }
+  .stat-card.danger .stat-value{ color:#7A362C; }
 
   /* Mobile */
   .mobile-topbar{ display:none; }

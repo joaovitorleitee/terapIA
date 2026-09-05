@@ -81,6 +81,7 @@ function PainelPsicologo({ psicologoId, name }){
   useEffect(() => { refresh(); }, [refresh]);
 
   const patientName = (id) => { const p = patients.find(x => x.id === id); return p ? (p.socialName||p.name) : 'Paciente'; };
+  const sessionStatusLabel = { pendente:'Pendente', agendada:'Agendada', confirmada:'Confirmada' };
   const netProfit = monthRevenue - monthExpenses;
 
   const handleAddWidget = async (key) => {
@@ -118,61 +119,58 @@ function PainelPsicologo({ psicologoId, name }){
         <p>Este é o resumo do seu consultório — indicadores calculados só a partir dos seus próprios dados.</p>
       </div>
 
-      <div className="widget-grid">
-        <div className="widget-square">
-          <div className="widget-label">Sessões hoje</div>
-          <div className="widget-value">{todaySessions.length}</div>
-          <div className="widget-list">
-            {todaySessions.length === 0 ? (
-              <div className="widget-empty">Nenhuma sessão hoje.</div>
-            ) : todaySessions.slice(0,4).map(s => (
-              <div className="widget-list-row" key={s.id}>
-                <strong>{s.startTime}</strong> · {patientName(s.patientId)}
-                {s.modalidade === 'Online' && meetingLink && (
-                  <React.Fragment> · <a href={meetingLink} target="_blank" rel="noopener noreferrer">Entrar</a></React.Fragment>
-                )}
-              </div>
-            ))}
-            {todaySessions.length > 4 && <div className="widget-list-row wl-sub">+{todaySessions.length-4} mais</div>}
-          </div>
-        </div>
-
-        <div className="widget-square">
-          <div className="widget-label">Pendentes de confirmação</div>
-          <div className="widget-value">{pendingCount}</div>
-          {pendingCount > 0 && <div className="widget-empty">Aprove pela Agenda.</div>}
-        </div>
-
-        <div className="widget-square">
-          <div className="widget-label">Tarefas para acompanhar</div>
-          <div className="widget-value">{activeTasksCount}</div>
-        </div>
-
+      <div className="grid-cards">
+        <div className="stat-card"><div className="stat-label">Sessões hoje</div><div className="stat-value">{todaySessions.length}</div></div>
+        <div className="stat-card"><div className="stat-label">Pendentes de confirmação</div><div className="stat-value">{pendingCount}</div></div>
+        <div className="stat-card"><div className="stat-label">Tarefas para acompanhar</div><div className="stat-value">{activeTasksCount}</div></div>
         {overdueCharges.length > 0 && (
-          <div className="widget-square danger">
-            <div className="widget-label">Cobranças vencidas</div>
-            <div className="widget-value">{overdueCharges.length}</div>
-            <div className="widget-list">
-              {overdueCharges.slice(0,3).map(c => (
-                <div className="widget-list-row" key={c.id}>{patientName(c.patientId)} · {formatCurrency(c.amount)}</div>
-              ))}
+          <div className="stat-card danger"><div className="stat-label">Cobranças vencidas</div><div className="stat-value">{overdueCharges.length}</div></div>
+        )}
+      </div>
+
+      <div className="grid-cards" style={{marginTop:16}}>
+        <div className="stat-card"><div className="stat-label">Receita do mês</div><div className="stat-value" style={{fontSize:22}}>{formatCurrency(monthRevenue)}</div></div>
+        <div className="stat-card">
+          <div className="stat-label">Lucro líquido</div>
+          <div className="stat-value" style={{fontSize:22, color: netProfit>=0 ? 'var(--primary-dark)' : '#7A362C'}}>{formatCurrency(netProfit)}</div>
+        </div>
+      </div>
+
+      <div className="panel" style={{marginTop:20}}>
+        <h3>Sessões de hoje</h3>
+        <div className="panel-sub">Sua agenda para as próximas horas.</div>
+        {todaySessions.length === 0 ? (
+          <div className="field hint">Nenhuma sessão para hoje.</div>
+        ) : todaySessions.map(s => (
+          <div className="mini-session-row" key={s.id}>
+            <span>{s.startTime} · {patientName(s.patientId)}</span>
+            <div style={{display:'flex', alignItems:'center', gap:8}}>
+              {s.modalidade === 'Online' && meetingLink && (
+                <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700}}>Entrar na sessão</a>
+              )}
+              <span className={'badge status-'+s.status}>{sessionStatusLabel[s.status]}</span>
             </div>
           </div>
-        )}
-
-        <div className="widget-square">
-          <div className="widget-label">Receita do mês</div>
-          <div className="widget-value small">{formatCurrency(monthRevenue)}</div>
-        </div>
-
-        <div className="widget-square">
-          <div className="widget-label">Lucro líquido</div>
-          <div className="widget-value small" style={{color: netProfit>=0 ? 'var(--primary-dark)' : '#7A362C'}}>{formatCurrency(netProfit)}</div>
-          <div className="widget-empty">Receita − despesas do mês.</div>
-        </div>
-
-        {widgetKeys.map(renderExtraWidget)}
+        ))}
       </div>
+
+      {overdueCharges.length > 0 && (
+        <div className="panel">
+          <h3>Cobranças vencidas</h3>
+          <div className="panel-sub">Resolva em Financeiro › Recebimentos.</div>
+          {overdueCharges.map(c => (
+            <div className="mini-session-row" key={c.id}>
+              <span>{patientName(c.patientId)} · {c.description} · {formatCurrency(c.amount)} · venceu em {formatDateOnly(c.dueDate)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {widgetKeys.length > 0 && (
+        <div className="widget-grid" style={{marginTop:20}}>
+          {widgetKeys.map(renderExtraWidget)}
+        </div>
+      )}
 
       <button className="widget-fab" onClick={()=>setShowPicker(true)} title="Adicionar widget">+</button>
       {showPicker && (
