@@ -15,7 +15,7 @@ async function fetchProfile(userId){
   if(error) return null;
   return {
     id: data.id, role: data.role, name: data.name, email: data.email,
-    termsAcceptedAt: data.terms_accepted_at, termsVersion: data.terms_version,
+    termsAcceptedAt: data.terms_accepted_at, termsVersion: data.terms_version, photoPath: data.photo_path || '',
   };
 }
 function hasValidConsent(user){
@@ -188,10 +188,16 @@ function formatCurrency(v){
 
 /* ================= Cor de tema do consultório ================= */
 const THEME_PALETTES = {
-  green:  { label:'Verde',   swatch:'#3B6255', primary:'#3B6255', primaryDark:'#274238', primarySoft:'#DCE8E1' },
-  pink:   { label:'Rosa',    swatch:'#A34B6B', primary:'#A34B6B', primaryDark:'#7A3350', primarySoft:'#F3DCE6' },
-  blue:   { label:'Azul',    swatch:'#385A8C', primary:'#385A8C', primaryDark:'#24406A', primarySoft:'#DCE6F3' },
-  yellow: { label:'Amarelo', swatch:'#9C7A1F', primary:'#9C7A1F', primaryDark:'#6E5714', primarySoft:'#F3ECD2' },
+  green:    { label:'Verde',      swatch:'#3B6255', primary:'#3B6255', primaryDark:'#274238', primarySoft:'#DCE8E1' },
+  pink:     { label:'Rosa',       swatch:'#A34B6B', primary:'#A34B6B', primaryDark:'#7A3350', primarySoft:'#F3DCE6' },
+  blue:     { label:'Azul',       swatch:'#385A8C', primary:'#385A8C', primaryDark:'#24406A', primarySoft:'#DCE6F3' },
+  yellow:   { label:'Amarelo',    swatch:'#9C7A1F', primary:'#9C7A1F', primaryDark:'#6E5714', primarySoft:'#F3ECD2' },
+  marsala:  { label:'Marsala',    swatch:'#7A3B42', primary:'#7A3B42', primaryDark:'#4F262B', primarySoft:'#F0DCDE' },
+  lightblue:{ label:'Azul-claro', swatch:'#4A90B8', primary:'#4A90B8', primaryDark:'#2E5F78', primarySoft:'#DCEAF0' },
+  black:    { label:'Preto',      swatch:'#2B2B2E', primary:'#2B2B2E', primaryDark:'#17171A', primarySoft:'#E3E3E5' },
+  purple:   { label:'Roxo',       swatch:'#6B4E8C', primary:'#6B4E8C', primaryDark:'#45325C', primarySoft:'#E6DEF0' },
+  teal:     { label:'Verde-água', swatch:'#2F8C82', primary:'#2F8C82', primaryDark:'#1D5952', primarySoft:'#DCEFEC' },
+  orange:   { label:'Laranja',    swatch:'#B5651D', primary:'#B5651D', primaryDark:'#7A4313', primarySoft:'#F3E3D2' },
 };
 async function loadThemeColor(psicologoId){
   const { data, error } = await supabase.from('theme_color').select('color_key').eq('psicologo_id', psicologoId).maybeSingle();
@@ -267,6 +273,19 @@ async function uploadProfessionalPhoto(psicologoId, file){
     { psicologo_id: psicologoId, photo_path: path, updated_at: new Date().toISOString() }, { onConflict:'psicologo_id' }
   );
   if(error){ logDbError('uploadProfessionalPhoto (metadata)', error); return { error: error.message }; }
+  return { photoPath: path };
+}
+// Foto do próprio paciente — mesma bucket, mas grava em profiles (auto-editável por qualquer usuário no próprio id).
+async function uploadOwnPhoto(userId, file){
+  if(file.size > 5*1024*1024) return { error: 'A foto precisa ter até 5MB.' };
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${userId}/photo-${Date.now()}.${ext}`;
+  const { error: uploadError } = await supabase.storage.from('professional-photos').upload(path, file, {
+    contentType: file.type || 'image/jpeg', upsert: true,
+  });
+  if(uploadError){ logDbError('uploadOwnPhoto (storage)', uploadError); return { error: uploadError.message }; }
+  const { error } = await supabase.from('profiles').update({ photo_path: path }).eq('id', userId);
+  if(error){ logDbError('uploadOwnPhoto (metadata)', error); return { error: error.message }; }
   return { photoPath: path };
 }
 // Usado pelo paciente — especialidade/apresentação/cidade/chave Pix/foto, nunca CPF/CNPJ ou dados bancários
@@ -960,7 +979,7 @@ export {
   DEFAULT_SESSION_PRICE, formatCurrency,
   THEME_PALETTES, loadThemeColor, saveThemeColor, applyTheme,
   TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
-  loadProfessionalInfoPublic, hasCompleteFiscalData, getProfessionalPhotoUrl, uploadProfessionalPhoto,
+  loadProfessionalInfoPublic, hasCompleteFiscalData, getProfessionalPhotoUrl, uploadProfessionalPhoto, uploadOwnPhoto,
   buildPixPayload, generatePixQrDataUrl,
   loadDataRightsConfig, saveDataRightsConfig, exportMyData,
   loadMyDeletionRequests, loadDeletionRequestsForPsicologo, createDeletionRequest, resolveDeletionRequest,

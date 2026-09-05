@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient.js';
 import {
   loadPatients, savePatients, patientId, EMAIL_RE, TERMS_VERSION, formatDateOnly,
-  loadDeletionRequestsForPsicologo, resolveDeletionRequest, formatDate,
+  loadDeletionRequestsForPsicologo, resolveDeletionRequest, formatDate, getProfessionalPhotoUrl,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconSearch, IconEdit, IconArchive, IconUserPlus, IconShield } from '../icons.jsx';
 
@@ -116,7 +116,7 @@ function PacientesPsicologo({ psicologoId }){
     try{
       const emails = mine.map(x => x.email.toLowerCase());
       if(emails.length){
-        const { data } = await supabase.from('profiles').select('email, terms_accepted_at, terms_version').eq('role','paciente').in('email', emails);
+        const { data } = await supabase.from('profiles').select('email, terms_accepted_at, terms_version, photo_path').eq('role','paciente').in('email', emails);
         setLinkedProfiles(data || []);
       } else {
         setLinkedProfiles([]);
@@ -226,9 +226,13 @@ function PacientesPsicologo({ psicologoId }){
           {filtered.map(p => {
             const consent = consentFor(p);
             const initials = p.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
+            const linkedProfile = linkedProfiles.find(lp => lp.email.toLowerCase() === p.email.toLowerCase());
+            const photoUrl = linkedProfile && linkedProfile.photo_path ? getProfessionalPhotoUrl(linkedProfile.photo_path) : null;
             return (
               <div className="patient-row" key={p.id}>
-                <div className="p-avatar">{initials}</div>
+                <div className="p-avatar" style={photoUrl ? {padding:0, overflow:'hidden'} : undefined}>
+                  {photoUrl ? <img src={photoUrl} alt={p.name} style={{width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%'}} /> : initials}
+                </div>
                 <div className="p-main">
                   <div className="p-name">
                     {p.socialName || p.name}

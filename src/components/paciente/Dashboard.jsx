@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalInfoPublic, getProfessionalPhotoUrl, fetchProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import React, { useState, useEffect, useRef } from 'react';
+import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalInfoPublic, getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { TermsModal } from '../shared.jsx';
 import { IconUsers } from '../icons.jsx';
 
@@ -12,11 +12,16 @@ function InicioPaciente({ user }){
   const [openCharges, setOpenCharges] = useState(0);
   const [professional, setProfessional] = useState(null);
   const [professionalName, setProfessionalName] = useState('');
+  const [myPhotoPath, setMyPhotoPath] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     (async () => {
       const allPatients = await loadPatients();
       const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
+      const me = await fetchProfile(user.id);
+      if(me) setMyPhotoPath(me.photoPath);
       if(record){
         const [sessions, tasks, charges, prof, psi] = await Promise.all([
           loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId), fetchProfile(record.psicologoId),
@@ -35,13 +40,38 @@ function InicioPaciente({ user }){
       }
       setLoading(false);
     })();
-  }, [user.email]);
+  }, [user.email, user.id]);
+
+  const handlePhotoChosen = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    setPhotoUploading(true);
+    const result = await uploadOwnPhoto(user.id, file);
+    setPhotoUploading(false);
+    if(!result.error) setMyPhotoPath(result.photoPath);
+  };
 
   return (
     <div>
-      <div className="welcome-card">
-        <h2>Olá, {user.name.split(' ')[0]}.</h2>
-        <p>Aqui você acompanha suas próximas sessões, tarefas e pagamentos, tudo em um único lugar.</p>
+      <div className="welcome-card" style={{display:'flex', alignItems:'center', gap:16}}>
+        <div style={{position:'relative', flexShrink:0}}>
+          <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+            {myPhotoPath
+              ? <img src={getProfessionalPhotoUrl(myPhotoPath)} alt="Minha foto" style={{width:'100%', height:'100%', objectFit:'cover'}} />
+              : <IconUsers size={26} color="#fff" />}
+          </div>
+          <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}} onChange={handlePhotoChosen} />
+          <button type="button" onClick={()=>photoInputRef.current.click()} disabled={photoUploading}
+                  style={{position:'absolute', bottom:-2, right:-2, width:22, height:22, borderRadius:'50%', border:'2px solid var(--primary-dark)', background:'#fff', color:'var(--primary-dark)', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer'}}
+                  title="Trocar minha foto">
+            {photoUploading ? '…' : '+'}
+          </button>
+        </div>
+        <div>
+          <h2>Olá, {user.name.split(' ')[0]}.</h2>
+          <p>Aqui você acompanha suas próximas sessões, tarefas e pagamentos, tudo em um único lugar.</p>
+        </div>
       </div>
       <div className="grid-cards">
         <div className="stat-card">
