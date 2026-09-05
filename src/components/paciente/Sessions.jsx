@@ -3,6 +3,7 @@ import {
   loadPatients, loadAvailability, loadBlocks, loadSessions, saveSessions, sessionId,
   loadCancelPolicy, loadPricing, getDefaultPrice, checkSlotAvailability,
   listAvailableSlotsForDate, cancelPolicyText, pushNotification, pushAudit,
+  checkConsentTermBlocking,
   DOW_SHORT, todayStr, addDays, fromDateStr, toDateStr, formatDateOnly, DEFAULT_SESSION_PRICE,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconCalendar, IconCheckCircle, IconMail, IconUserPlus } from '../icons.jsx';
@@ -334,20 +335,23 @@ function MinhasSessoesPaciente({ user }){
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [view, setView] = useState('lista'); // lista | calendario
   const [visibleMoreCount, setVisibleMoreCount] = useState(5);
+  const [consentBlocking, setConsentBlocking] = useState(null);
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
     const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
     setPatientRecord(record || null);
     if(record){
-      const [a, b, s, cp, pr] = await Promise.all([
+      const [a, b, s, cp, pr, cb] = await Promise.all([
         loadAvailability(record.psicologoId), loadBlocks(), loadSessions(), loadCancelPolicy(record.psicologoId), loadPricing(record.psicologoId),
+        checkConsentTermBlocking(record.psicologoId, record.id),
       ]);
       setAvailability(a);
       setBlocks(b.filter(x => x.psicologoId === record.psicologoId));
       setSessions(s.filter(x => x.psicologoId === record.psicologoId));
       setCancelPolicy(cp);
       setPricing(pr);
+      setConsentBlocking(cb);
     }
     setLoading(false);
   }, [user.email]);
@@ -355,6 +359,9 @@ function MinhasSessoesPaciente({ user }){
   useEffect(() => { refresh(); }, [refresh]);
 
   const bookSession = async (session) => {
+    if(consentBlocking && consentBlocking.blocked){
+      throw new Error('Assine o Termo de Consentimento Terapêutico antes de agendar.');
+    }
     const all = await loadSessions();
     await saveSessions([...all, session]);
     await refresh();
@@ -444,6 +451,11 @@ function MinhasSessoesPaciente({ user }){
 
   return (
     <div>
+      {consentBlocking && consentBlocking.blocked && (
+        <div className="alert alert-danger" style={{marginBottom:16}}>
+          Você precisa assinar o Termo de Consentimento Terapêutico antes de agendar sessões. Vá em Documentos → Consentimentos para assinar.
+        </div>
+      )}
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10}}>
         <div style={{display:'flex', alignItems:'center', gap:14, flexWrap:'wrap'}}>
           <div className="field hint" style={{margin:0}}>{upcoming.length} sessão(ões) futura(s)</div>
@@ -452,7 +464,9 @@ function MinhasSessoesPaciente({ user }){
             <button className={'filter-pill '+(view==='calendario'?'active':'')} onClick={()=>setView('calendario')}>Calendário</button>
           </div>
         </div>
-        <button className="btn-new" onClick={()=>setShowBooking(true)}><IconPlus size={15}/> Agendar consulta</button>
+        <button className="btn-new" onClick={()=>setShowBooking(true)} disabled={consentBlocking && consentBlocking.blocked}>
+          <IconPlus size={15}/> Agendar consulta
+        </button>
       </div>
 
       {mySessions.length === 0 ? (
@@ -460,7 +474,7 @@ function MinhasSessoesPaciente({ user }){
           <div className="icon-wrap"><IconCalendar size={24}/></div>
           <h2>Nenhuma sessão ainda</h2>
           <p>Agende sua primeira consulta escolhendo um horário disponível na agenda do seu psicólogo.</p>
-          <button className="btn-primary" style={{marginTop:16, width:'auto', padding:'10px 20px'}} onClick={()=>setShowBooking(true)}>
+          <button className="btn-primary" style={{marginTop:16, width:'auto', padding:'10px 20px'}} onClick={()=>setShowBooking(true)} disabled={consentBlocking && consentBlocking.blocked}>
             <IconPlus size={15}/> Agendar consulta
           </button>
         </div>

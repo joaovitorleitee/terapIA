@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   loadPatients, loadSessions, loadTasks, loadCharges, loadAvailability, loadProfessionalInfoPublic,
   getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr,
-  loadPatientDocuments, loadJournalEntries, loadReceipts,
+  loadPatientDocuments, loadJournalEntries, loadReceipts, checkConsentTermBlocking,
   WIDGET_CATALOG_PACIENTE, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget,
 } from '../../lib/dataStore.js';
 import { TermsModal, WidgetPickerModal } from '../shared.jsx';
@@ -32,6 +32,7 @@ function InicioPaciente({ user, onNavigate }){
   const [extra, setExtra] = useState({});
   const [widgetKeys, setWidgetKeys] = useState([]);
   const [showPicker, setShowPicker] = useState(false);
+  const [consentBlocking, setConsentBlocking] = useState(null);
   const photoInputRef = useRef(null);
 
   const go = (section, taskId) => { if(onNavigate) onNavigate(section, taskId); };
@@ -49,6 +50,8 @@ function InicioPaciente({ user, onNavigate }){
         loadAvailability(record.psicologoId), loadPatientDocuments(record.id), loadJournalEntries(record.id), loadReceipts(),
       ]);
       setMeetingLink(availability.meetingLink || '');
+      const cb = await checkConsentTermBlocking(record.psicologoId, record.id);
+      setConsentBlocking(cb);
       const today = todayStr();
       const mySessions = sessions
         .filter(s => s.patientId === record.id && s.date >= today && ['confirmada','pendente','agendada'].includes(s.status))
@@ -146,7 +149,12 @@ function InicioPaciente({ user, onNavigate }){
         <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>
       ) : (
         <React.Fragment>
-          <div className="grid-cards">
+          {consentBlocking && consentBlocking.blocked && (
+            <div className="alert alert-danger" style={{marginTop:16, cursor:'pointer'}} onClick={()=>go('documentos')}>
+              Você tem um Termo de Consentimento Terapêutico aguardando assinatura. Toque aqui para assinar antes de agendar novas sessões.
+            </div>
+          )}
+          <div className="grid-cards" style={{marginTop:16}}>
             <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('minhas-sessoes')}>
               <div className="stat-label">Próxima sessão</div>
               <div className="stat-value" style={{fontSize: nextSession ? 17 : 28}}>

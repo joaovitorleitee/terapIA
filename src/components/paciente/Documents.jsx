@@ -1,10 +1,136 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   loadPatients, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, deletePatientDocument,
+  loadCurrentConsentTerm, getConsentTermUrl, loadConsentSignature, signConsentTerm, refuseConsentTerm,
   formatDate, DOCUMENT_CATEGORIES,
 } from '../../lib/dataStore.js';
 import { showToast } from '../../lib/toast.js';
-import { IconUserPlus, IconPlus, IconTrash, IconNote } from '../icons.jsx';
+import { TermsModal } from '../shared.jsx';
+import { IconUserPlus, IconPlus, IconTrash, IconNote, IconShield, IconCheckCircle } from '../icons.jsx';
+
+function ConsentSignModal({ term, onClose, onSigned, onRefused }){
+  const [checked, setChecked] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const openDoc = async () => {
+    const url = await getConsentTermUrl(term.storagePath);
+    if(url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+  const doSign = async () => { setBusy(true); try{ await onSigned(); } finally{ setBusy(false); } };
+  const doRefuse = async () => {
+    const ok = window.confirm('Tem certeza que quer recusar este termo? Você não conseguirá agendar sessões enquanto ele não for assinado.');
+    if(!ok) return;
+    setBusy(true); try{ await onRefused(); } finally{ setBusy(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()}>
+        <h3>{term.title}</h3>
+        <div className="field hint" style={{marginBottom:14}}>Leia o documento com atenção antes de assinar.</div>
+        <button className="btn-secondary" style={{width:'auto', padding:'9px 16px', marginBottom:16}} onClick={openDoc}>Abrir documento para leitura</button>
+        <label className="checkbox-row" style={{display:'flex', gap:8, alignItems:'flex-start', marginBottom:16, cursor:'pointer'}}>
+          <input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)} />
+          <span style={{fontSize:13}}>Li e concordo com os termos descritos no documento acima.</span>
+        </label>
+        <div className="modal-actions">
+          <button className="btn-secondary" type="button" onClick={doRefuse} disabled={busy} style={{color:'var(--danger)'}}>Recusar</button>
+          <button className="btn-primary" type="button" onClick={doSign} disabled={busy || !checked}>
+            {busy && <span className="spinner"/>}
+            {busy ? 'Assinando…' : 'Assinar digitalmente'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConsentimentosPanel({ user, patientRecord }){
+  const [term, setTerm] = useState(null);
+  const [signature, setSignature] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showSign, setShowSign] = useState(false);
+  const [showTerapiaTerms, setShowTerapiaTerms] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const t = await loadCurrentConsentTerm(patientRecord.psicologoId);
+    setTerm(t);
+    setSignature(t ? await loadConsentSignature(t.id, patientRecord.id) : null);
+    setLoading(false);
+  }, [patientRecord.psicologoId, patientRecord.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const openDoc = async () => {
+    if(!term) return;
+    const url = await getConsentTermUrl(term.storagePath);
+    if(url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleSign = async () => {
+    await signConsentTerm({ consentTermId: term.id, psicologoId: patientRecord.psicologoId, patientId: patientRecord.id });
+    setShowSign(false);
+    await refresh();
+    showToast('Termo assinado com sucesso.');
+  };
+  const handleRefuse = async () => {
+    await refuseConsentTerm({ consentTermId: term.id, psicologoId: patientRecord.psicologoId, patientId: patientRecord.id });
+    setShowSign(false);
+    await refresh();
+    showToast('Recusa registrada.');
+  };
+
+  if(loading) return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>;
+
+  const status = signature ? signature.status : 'pendente';
+
+  return (
+    <div>
+      <div className="panel">
+        <h3>Termo de Uso do TerapIA</h3>
+        <div className="panel-sub">Consentimento com a própria plataforma — diferente do termo terapêutico abaixo.</div>
+        <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
+          <IconCheckCircle size={16} color="var(--primary-dark)" />
+          <span style={{fontSize:13}}>Aceito em {formatDate(user.termsAcceptedAt)} · versão {user.termsVersion}</span>
+        </div>
+        <button className="btn-link" style={{marginTop:8}} onClick={()=>setShowTerapiaTerms(true)}>Ver termo</button>
+      </div>
+
+      <div className="panel">
+        <h3>Termo de Consentimento Terapêutico</h3>
+        <div className="panel-sub">Formaliza o consentimento com o acompanhamento terapêutico do seu psicólogo.</div>
+        {!term ? (
+          <div className="field hint" style={{marginTop:8}}>Seu psicólogo ainda não cadastrou este termo.</div>
+        ) : (
+          <React.Fragment>
+            <div style={{marginTop:8, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+              <span className={'badge '+(status==='assinado' ? 'status-confirmada' : status==='recusado' ? 'status-cancelada' : 'status-pendente')}>
+                {status==='assinado' ? 'Assinado' : status==='recusado' ? 'Recusado' : 'Pendente de assinatura'}
+              </span>
+              {signature && signature.signedAt && <span style={{fontSize:12, color:'var(--ink-faint)'}}>em {formatDate(signature.signedAt)}</span>}
+            </div>
+            <div style={{display:'flex', gap:10, marginTop:12}}>
+              <button className="btn-link" onClick={openDoc}>Ver documento</button>
+              {status !== 'assinado' && (
+                <button className="btn-link" style={{fontWeight:700}} onClick={()=>setShowSign(true)}>
+                  {status === 'recusado' ? 'Revisar e assinar' : 'Ler e assinar'}
+                </button>
+              )}
+            </div>
+            {status !== 'assinado' && (
+              <div className="alert alert-danger" style={{marginTop:12}}>Você precisa assinar este termo antes de agendar novas sessões.</div>
+            )}
+          </React.Fragment>
+        )}
+      </div>
+
+      {showSign && term && (
+        <ConsentSignModal term={term} onClose={()=>setShowSign(false)} onSigned={handleSign} onRefused={handleRefuse} />
+      )}
+      {showTerapiaTerms && <TermsModal onClose={()=>setShowTerapiaTerms(false)} />}
+    </div>
+  );
+}
 
 function DocumentosPaciente({ user }){
   const [loading, setLoading] = useState(true);
@@ -13,6 +139,7 @@ function DocumentosPaciente({ user }){
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [description, setDescription] = useState('');
+  const [tab, setTab] = useState('arquivos'); // arquivos | consentimentos
   const fileInputRef = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -77,6 +204,19 @@ function DocumentosPaciente({ user }){
 
   return (
     <div>
+      <div className="subtabs">
+        <button className={tab==='arquivos'?'active':''} onClick={()=>setTab('arquivos')}>Meus arquivos</button>
+        <button className={tab==='consentimentos'?'active':''} onClick={()=>setTab('consentimentos')}>
+          <IconShield size={13} style={{marginRight:5, verticalAlign:-2}}/>Consentimentos
+        </button>
+      </div>
+
+      {tab === 'consentimentos' && (
+        <ConsentimentosPanel user={user} patientRecord={patientRecord} />
+      )}
+
+      {tab === 'arquivos' && (
+        <React.Fragment>
       <div className="panel" style={{marginBottom:20}}>
         <h3>Enviar novo documento</h3>
         <div className="panel-sub">PDF, imagem (JPG/PNG/WEBP) ou Word — até 20MB. Visível apenas para você e seu psicólogo.</div>
@@ -115,8 +255,11 @@ function DocumentosPaciente({ user }){
           {doc.description && <div className="tc-instructions">{doc.description}</div>}
         </div>
       ))}
+        </React.Fragment>
+      )}
     </div>
   );
 }
 
 export { DocumentosPaciente };
+

@@ -19,6 +19,7 @@ import { TarefasPsicologo } from './components/psicologo/Tasks.jsx';
 import { FinanceiroPsicologo } from './components/psicologo/Financeiro.jsx';
 import { RelatoriosPsicologo } from './components/psicologo/Reports.jsx';
 import { AuditoriaPsicologo } from './components/psicologo/Audit.jsx';
+import { ConsentimentoPsicologo } from './components/psicologo/Consent.jsx';
 import InicioPaciente from './components/paciente/Dashboard.jsx';
 import { MinhasSessoesPaciente } from './components/paciente/Sessions.jsx';
 import { MinhasTarefasPaciente } from './components/paciente/Tasks.jsx';
@@ -226,6 +227,7 @@ function App(){
     if(role === 'psicologo' && section === 'tarefas') return <TarefasPsicologo psicologoId={currentUser.id} focusTaskId={taskFocusId} onFocusHandled={()=>setTaskFocusId(null)} />;
     if(role === 'psicologo' && section === 'financeiro') return <FinanceiroPsicologo psicologoId={currentUser.id} professionalName={currentUser.name} />;
     if(role === 'psicologo' && section === 'relatorios') return <RelatoriosPsicologo psicologoId={currentUser.id} />;
+    if(role === 'psicologo' && section === 'consentimento') return <ConsentimentoPsicologo psicologoId={currentUser.id} />;
     if(role === 'psicologo' && section === 'auditoria') return <AuditoriaPsicologo psicologoId={currentUser.id} />;
     if(role === 'paciente' && section === 'inicio') return <InicioPaciente user={currentUser} onNavigate={(s,taskId)=>{ setTaskFocusId(taskId||null); setSection(s); }} />;
     if(role === 'paciente' && section === 'minhas-sessoes') return <MinhasSessoesPaciente user={currentUser} />;

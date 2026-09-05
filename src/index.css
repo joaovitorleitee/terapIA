@@ -497,6 +497,7 @@
     white-space:nowrap;
   }
   .btn-new:hover{ background:var(--primary-dark); }
+  .btn-new:disabled{ opacity:0.5; cursor:not-allowed; }
 
   .patient-list{ display:flex; flex-direction:column; gap:8px; }
   .patient-row{

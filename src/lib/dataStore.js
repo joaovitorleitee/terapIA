@@ -625,6 +625,80 @@ async function saveNotes(notes){
 }
 const noteId = uuid;
 
+/* ================= Termo de Consentimento Terapêutico (US-038) — diferente do Termo do TerapIA ================= */
+const CONSENT_TERM_ALLOWED_TYPES = ['application/pdf','image/jpeg','image/jpg','image/png','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+function rowToConsentTerm(r){
+  return { id:r.id, psicologoId:r.psicologo_id, title:r.title, storagePath:r.storage_path, fileName:r.file_name, mimeType:r.mime_type, isCurrent:r.is_current, createdAt:r.created_at };
+}
+function rowToConsentSignature(r){
+  return { id:r.id, consentTermId:r.consent_term_id, psicologoId:r.psicologo_id, patientId:r.patient_id, status:r.status, signedAt:r.signed_at, createdAt:r.created_at };
+}
+// Termo vigente (obrigatório) do psicólogo — o único que conta pra bloqueio de agendamento e aviso na home.
+async function loadCurrentConsentTerm(psicologoId){
+  const { data, error } = await supabase.from('consent_terms').select('*').eq('psicologo_id', psicologoId).eq('is_current', true).maybeSingle();
+  logDbError('loadCurrentConsentTerm', error);
+  return data ? rowToConsentTerm(data) : null;
+}
+async function loadConsentTermsHistory(psicologoId){
+  const { data, error } = await supabase.from('consent_terms').select('*').eq('psicologo_id', psicologoId).order('created_at', { ascending:false });
+  logDbError('loadConsentTermsHistory', error);
+  return data ? data.map(rowToConsentTerm) : [];
+}
+// Envia um novo termo — vira automaticamente o vigente; o(s) anterior(es) deixam de ser obrigatório(s)
+// mas continuam consultáveis no histórico (nunca apagados).
+async function uploadConsentTerm({ psicologoId, file, title }){
+  if(file.size > 20*1024*1024) return { error: 'Arquivo maior que 20MB.' };
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const path = `${psicologoId}/${Date.now()}-${safeName}`;
+  const { error: uploadError } = await supabase.storage.from('consent-terms').upload(path, file, { contentType: file.type || 'application/octet-stream' });
+  if(uploadError){ logDbError('uploadConsentTerm (storage)', uploadError); return { error: uploadError.message }; }
+  await supabase.from('consent_terms').update({ is_current:false }).eq('psicologo_id', psicologoId).eq('is_current', true);
+  const { data, error } = await supabase.from('consent_terms').insert({
+    psicologo_id: psicologoId, title: title || file.name, storage_path: path, file_name: file.name, mime_type: file.type, is_current: true,
+  }).select().single();
+  if(error){ logDbError('uploadConsentTerm (metadata)', error); return { error: error.message }; }
+  return { term: rowToConsentTerm(data) };
+}
+async function getConsentTermUrl(storagePath){
+  const { data, error } = await supabase.storage.from('consent-terms').createSignedUrl(storagePath, 300);
+  logDbError('getConsentTermUrl', error);
+  return data ? data.signedUrl : null;
+}
+// Ausência de linha = pendente. Só existe registro quando o paciente assina ou recusa.
+async function loadConsentSignature(consentTermId, patientId){
+  const { data, error } = await supabase.from('consent_term_signatures').select('*').eq('consent_term_id', consentTermId).eq('patient_id', patientId).maybeSingle();
+  logDbError('loadConsentSignature', error);
+  return data ? rowToConsentSignature(data) : null;
+}
+async function loadConsentSignaturesForTerm(consentTermId){
+  const { data, error } = await supabase.from('consent_term_signatures').select('*').eq('consent_term_id', consentTermId);
+  logDbError('loadConsentSignaturesForTerm', error);
+  return data ? data.map(rowToConsentSignature) : [];
+}
+async function signConsentTerm({ consentTermId, psicologoId, patientId }){
+  const { error } = await supabase.from('consent_term_signatures').upsert({
+    consent_term_id: consentTermId, psicologo_id: psicologoId, patient_id: patientId, status:'assinado', signed_at: new Date().toISOString(),
+  }, { onConflict: 'consent_term_id,patient_id' });
+  logDbError('signConsentTerm', error);
+  return !error;
+}
+async function refuseConsentTerm({ consentTermId, psicologoId, patientId }){
+  const { error } = await supabase.from('consent_term_signatures').upsert({
+    consent_term_id: consentTermId, psicologo_id: psicologoId, patient_id: patientId, status:'recusado', signed_at: null,
+  }, { onConflict: 'consent_term_id,patient_id' });
+  logDbError('refuseConsentTerm', error);
+  return !error;
+}
+// Usado tanto no aviso da home quanto no bloqueio de agendamento — mesma fonte de verdade pros dois.
+async function checkConsentTermBlocking(psicologoId, patientId){
+  const term = await loadCurrentConsentTerm(psicologoId);
+  if(!term) return { blocked:false, term:null, signature:null };
+  const signature = await loadConsentSignature(term.id, patientId);
+  const blocked = !signature || signature.status !== 'assinado';
+  return { blocked, term, signature };
+}
+
+
 /* ================= Widgets do painel (personalização) ================= */
 const WIDGET_CATALOG_PSICOLOGO = [
   { key:'despesas_mes', label:'Despesas do mês', group:'Financeiro' },
@@ -1038,6 +1112,8 @@ export {
   loadNotificationsFor, saveNotificationsFor, pushNotificationFor,
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
   loadNotes, saveNotes, noteId,
+  CONSENT_TERM_ALLOWED_TYPES, loadCurrentConsentTerm, loadConsentTermsHistory, uploadConsentTerm, getConsentTermUrl,
+  loadConsentSignature, loadConsentSignaturesForTerm, signConsentTerm, refuseConsentTerm, checkConsentTermBlocking,
   WIDGET_CATALOG_PSICOLOGO, WIDGET_CATALOG_PACIENTE, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget,
   MOOD_OPTIONS, loadJournalEntries, saveJournalEntry,
   DOCUMENT_CATEGORIES, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, updatePatientDocument, deletePatientDocument, loadTasks, saveTasks, updateTaskFields, deleteTask, taskId,
