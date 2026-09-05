@@ -85,16 +85,10 @@ function buildProntuarioPdf(patient, selectedSessions, selectedNotes){
 }
 
 function ExportRecordModal({ patient, sessions, notes, onClose, onExported }){
-  const [selectedSessionIds, setSelectedSessionIds] = useState(() => new Set(sessions.map(s => s.id)));
   const [selectedNoteIds, setSelectedNoteIds] = useState(() => new Set(notes.map(n => n.id)));
   const [format, setFormat] = useState('docx');
   const [busy, setBusy] = useState(false);
 
-  const toggleSession = (id) => setSelectedSessionIds(prev => {
-    const next = new Set(prev);
-    if(next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
   const toggleNote = (id) => setSelectedNoteIds(prev => {
     const next = new Set(prev);
     if(next.has(id)) next.delete(id); else next.add(id);
@@ -104,9 +98,8 @@ function ExportRecordModal({ patient, sessions, notes, onClose, onExported }){
   const doExport = async () => {
     setBusy(true);
     try{
-      const selectedSessions = sessions.filter(s => selectedSessionIds.has(s.id));
       const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
-      await onExported(format, selectedSessions, selectedNotes);
+      await onExported(format, sessions, selectedNotes);
       onClose();
     } finally { setBusy(false); }
   };
@@ -122,29 +115,7 @@ function ExportRecordModal({ patient, sessions, notes, onClose, onExported }){
             <button type="button" className={'filter-pill '+(format==='pdf'?'active':'')} onClick={()=>setFormat('pdf')}>PDF</button>
           </div>
         </div>
-
-        <div style={{marginBottom:16}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-            <div style={{fontSize:12.5, fontWeight:600}}>Sessões a incluir ({selectedSessionIds.size} de {sessions.length})</div>
-            <div style={{display:'flex', gap:12}}>
-              <button type="button" className="btn-link" onClick={()=>setSelectedSessionIds(new Set(sessions.map(s=>s.id)))}>Selecionar todas</button>
-              <button type="button" className="btn-link" onClick={()=>setSelectedSessionIds(new Set())}>Limpar</button>
-            </div>
-          </div>
-          {sessions.length === 0 ? (
-            <div className="field hint">Nenhuma sessão registrada para este paciente.</div>
-          ) : (
-            <div style={{maxHeight:180, overflowY:'auto', border:'1px solid var(--border)', borderRadius:10, padding:4}}>
-              {sessions.map(s => (
-                <label key={s.id} style={{display:'flex', gap:8, alignItems:'center', padding:'7px 8px', borderBottom:'1px solid var(--border)', cursor:'pointer'}}>
-                  <input type="checkbox" checked={selectedSessionIds.has(s.id)} onChange={()=>toggleSession(s.id)}
-                         style={{width:'auto', padding:0, border:'none', background:'none'}} />
-                  <span style={{fontSize:12.5}}>{formatDateOnly(s.date)} {s.startTime} — {s.status} — {s.modalidade || 'Presencial'}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        <div className="field hint" style={{marginBottom:16}}>Todas as {sessions.length} sessão(ões) do paciente serão incluídas automaticamente no resumo.</div>
 
         <div>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
