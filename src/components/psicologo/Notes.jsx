@@ -4,9 +4,38 @@ import { jsPDF } from 'jspdf';
 import {
   loadSessions, loadNotes, saveNotes, noteId, pushAudit, formatDate, formatDateOnly, loadPatients,
   DOCUMENT_CATEGORIES, loadPatientDocuments, updatePatientDocument, deletePatientDocument, getPatientDocumentUrl,
+  loadJournalEntries, MOOD_OPTIONS, todayStr,
 } from '../../lib/dataStore.js';
 import { TagInput } from '../shared.jsx';
-import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash } from '../icons.jsx';
+import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash, IconBook } from '../icons.jsx';
+
+function JournalPanel({ patientId }){
+  const [entries, setEntries] = useState(null);
+
+  useEffect(() => { loadJournalEntries(patientId).then(setEntries); }, [patientId]);
+
+  if(entries === null){
+    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando diário…</div>;
+  }
+
+  const moodEmoji = (m) => (MOOD_OPTIONS.find(o => o.value === m) || {}).emoji || '';
+
+  return (
+    <div>
+      <div className="alert alert-success" style={{marginBottom:16}}>
+        Conteúdo escrito pelo próprio paciente — somente leitura. Você não pode editar nem excluir entradas do diário.
+      </div>
+      {entries.length === 0 ? (
+        <div className="field hint">Este paciente ainda não registrou nenhuma entrada de diário.</div>
+      ) : entries.map(e => (
+        <div className="panel" key={e.id} style={{marginBottom:10}}>
+          <h3>{formatDateOnly(e.entryDate)} {moodEmoji(e.mood)}{e.entryDate === todayStr() ? ' · hoje' : ''}</h3>
+          <div style={{fontSize:13.5, color:'var(--ink)', whiteSpace:'pre-wrap'}}>{e.content}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function DocumentsPanel({ psicologoId, patientId }){
   const [documents, setDocuments] = useState(null);
@@ -396,8 +425,13 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
 
       <div className="subtabs">
         <button className={tab==='notas'?'active':''} onClick={()=>setTab('notas')}>Notas</button>
+        <button className={tab==='diario'?'active':''} onClick={()=>setTab('diario')}>Diário</button>
         <button className={tab==='documentos'?'active':''} onClick={()=>setTab('documentos')}>Documentos</button>
       </div>
+
+      {tab === 'diario' && (
+        <JournalPanel patientId={patient.id} />
+      )}
 
       {tab === 'documentos' && (
         <DocumentsPanel psicologoId={psicologoId} patientId={patient.id} />

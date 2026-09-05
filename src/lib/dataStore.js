@@ -582,6 +582,33 @@ async function saveNotes(notes){
 }
 const noteId = uuid;
 
+/* ================= Diário do paciente (US-036) ================= */
+const MOOD_OPTIONS = [
+  { value:'muito_mal', label:'Muito mal', emoji:'😞' },
+  { value:'mal', label:'Mal', emoji:'🙁' },
+  { value:'neutro', label:'Neutro', emoji:'😐' },
+  { value:'bem', label:'Bem', emoji:'🙂' },
+  { value:'muito_bem', label:'Muito bem', emoji:'😄' },
+];
+function rowToJournalEntry(r){
+  return { id:r.id, psicologoId:r.psicologo_id, patientId:r.patient_id, entryDate:r.entry_date, mood:r.mood || '', content:r.content, createdAt:r.created_at, updatedAt:r.updated_at };
+}
+async function loadJournalEntries(patientId){
+  const { data, error } = await supabase.from('patient_journal_entries').select('*').eq('patient_id', patientId).order('entry_date', { ascending:false });
+  logDbError('loadJournalEntries', error);
+  return data ? data.map(rowToJournalEntry) : [];
+}
+// Uma entrada por dia — upsert por (patient_id, entry_date). Só o próprio paciente pode chamar (RLS garante).
+async function saveJournalEntry({ psicologoId, patientId, entryDate, mood, content }){
+  const { data, error } = await supabase.from('patient_journal_entries').upsert({
+    psicologo_id: psicologoId, patient_id: patientId, entry_date: entryDate,
+    mood: mood || null, content, updated_at: new Date().toISOString(),
+  }, { onConflict: 'patient_id,entry_date' }).select().single();
+  logDbError('saveJournalEntry', error);
+  return error ? null : rowToJournalEntry(data);
+}
+
+
 /* ================= Documentos do paciente (US-034/US-035) ================= */
 const DOCUMENT_CATEGORIES = ['Exame', 'Atestado', 'Documento pessoal', 'Outro'];
 const DOCUMENT_MAX_SIZE = 20 * 1024 * 1024; // 20MB — mesmo limite configurado no bucket
@@ -925,6 +952,7 @@ export {
   loadNotificationsFor, saveNotificationsFor, pushNotificationFor,
   loadNotifications, saveNotifications, pushNotification, pushPatientNotification,
   loadNotes, saveNotes, noteId,
+  MOOD_OPTIONS, loadJournalEntries, saveJournalEntry,
   DOCUMENT_CATEGORIES, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, updatePatientDocument, deletePatientDocument, loadTasks, saveTasks, deleteTask, taskId,
   loadTaskTemplates, saveTaskTemplates, templateId, TEMPLATE_CATEGORIES,
   loadCharges, saveCharges, chargeId, PAYMENT_METHODS, loadReceipts, saveReceipts, receiptId,

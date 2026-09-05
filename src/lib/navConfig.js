@@ -1,4 +1,4 @@
-import { IconHome, IconCalendar, IconUsers, IconNote, IconTask, IconWallet, IconBarChart, IconHistory } from '../components/icons.jsx';
+import { IconHome, IconCalendar, IconUsers, IconNote, IconTask, IconWallet, IconBarChart, IconHistory, IconBook } from '../components/icons.jsx';
 
 const NAV_PSICOLOGO = [
   { key:'painel', label:'Painel', icon: IconHome },
@@ -14,6 +14,7 @@ const NAV_PACIENTE = [
   { key:'inicio', label:'Início', icon: IconHome },
   { key:'minhas-sessoes', label:'Minhas sessões', icon: IconCalendar },
   { key:'minhas-tarefas', label:'Minhas tarefas', icon: IconTask },
+  { key:'diario', label:'Diário', icon: IconBook },
   { key:'documentos', label:'Documentos', icon: IconNote },
   { key:'pagamentos', label:'Pagamentos', icon: IconWallet },
 ];
@@ -30,6 +31,7 @@ const SECTION_META = {
   inicio:      { title:'Início', subtitle:'Bem-vindo(a) de volta', builtBy:null },
   'minhas-sessoes': { title:'Minhas sessões', subtitle:'Próximas consultas e histórico', builtBy:null },
   'minhas-tarefas': { title:'Minhas tarefas', subtitle:'Suas atividades entre sessões', builtBy:null },
+  diario:      { title:'Diário', subtitle:'Seu registro diário de rotina e sentimentos', builtBy:null },
   documentos:  { title:'Documentos', subtitle:'Envie exames, atestados e outros arquivos', builtBy:null },
   pagamentos:  { title:'Pagamentos', subtitle:'Cobranças e comprovantes', builtBy:null },
 };

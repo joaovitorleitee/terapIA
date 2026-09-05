@@ -28,6 +28,7 @@ const IconCheckCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="8.5"/><pa
 const IconShield = (p) => <Icon {...p}><path d="M12 3.5 5 6v5.5c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-2.5Z"/><path d="m9 12 2 2 4-4.5"/></Icon>;
 const IconBarChart = (p) => <Icon {...p}><path d="M4 20V10M10 20V4M16 20v-7M4 20h16"/></Icon>;
 const IconHistory = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 5v4h4"/><path d="M12 8v4l3 2"/></Icon>;
+const IconBook = (p) => <Icon {...p}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/></Icon>;
 const IconXCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6M15 9l-6 6"/></Icon>;
 const IconChevronLeft = (p) => <Icon {...p}><path d="m15 6-6 6 6 6"/></Icon>;
 const IconChevronRight = (p) => <Icon {...p}><path d="m9 6 6 6-6 6"/></Icon>;
@@ -38,5 +39,5 @@ export {
   Icon, IconHome, IconCalendar, IconUsers, IconNote, IconTask, IconWallet,
   IconLock, IconSparkle, IconMail, IconChevronDown, IconLogOut, IconClockRewind,
   IconEyeOff, IconEye, IconPlus, IconEdit, IconArchive, IconSearch, IconUserPlus,
-  IconTrash, IconCheckCircle, IconXCircle, IconChevronLeft, IconChevronRight, IconBell, IconShield, IconBarChart, IconHistory,
+  IconTrash, IconCheckCircle, IconXCircle, IconChevronLeft, IconChevronRight, IconBell, IconShield, IconBarChart, IconHistory, IconBook,
 };
