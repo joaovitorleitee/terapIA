@@ -603,18 +603,24 @@ async function loadPatientDocuments(patientId){
 // as policies de storage exigem exatamente essa estrutura de pastas.
 async function uploadPatientDocument({ psicologoId, patientId, uploadedByRole, file, category, description }){
   if(file.size > DOCUMENT_MAX_SIZE) return { error: 'Arquivo maior que 20MB.' };
-  if(DOCUMENT_ALLOWED_TYPES.length && !DOCUMENT_ALLOWED_TYPES.includes(file.type)) return { error: 'Tipo de arquivo não permitido. Envie PDF, imagem (JPG/PNG/WEBP) ou Word.' };
   const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
   const path = `${psicologoId}/${patientId}/${Date.now()}-${safeName}`;
-  const { error: uploadError } = await supabase.storage.from('patient-documents').upload(path, file);
-  if(uploadError) return { error: 'Não foi possível enviar o arquivo agora.' };
+  const { error: uploadError } = await supabase.storage.from('patient-documents').upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+  });
+  if(uploadError){
+    logDbError('uploadPatientDocument (storage)', uploadError);
+    return { error: uploadError.message || 'Não foi possível enviar o arquivo agora.' };
+  }
   const { data, error } = await supabase.from('patient_documents').insert({
     psicologo_id: psicologoId, patient_id: patientId, uploaded_by_role: uploadedByRole,
     storage_path: path, file_name: file.name, mime_type: file.type, file_size: file.size,
     category: category || null, description: description || null,
   }).select().single();
-  logDbError('uploadPatientDocument (metadata)', error);
-  if(error) return { error: 'Arquivo enviado, mas não foi possível salvar as informações dele.' };
+  if(error){
+    logDbError('uploadPatientDocument (metadata)', error);
+    return { error: 'Arquivo enviado, mas não foi possível salvar as informações dele: ' + error.message };
+  }
   return { document: rowToDocument(data) };
 }
 async function getPatientDocumentUrl(storagePath){
