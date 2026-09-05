@@ -3,6 +3,7 @@ import { supabase } from './lib/supabaseClient.js';
 import storage from './lib/storage.js';
 import {
   fetchProfile, hasValidConsent, loadThemeColor, applyTheme, loadPatients, findPendingPatientLink, pushAudit,
+  getProfessionalPhotoUrl,
   SESSION_TIMEOUT_MS, TERMS_VERSION, todayStr,
 } from './lib/dataStore.js';
 import { NAV_PSICOLOGO, NAV_PACIENTE, SECTION_META } from './lib/navConfig.js';
@@ -38,6 +39,7 @@ function App(){
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [patientRecord, setPatientRecord] = useState(null);
   const [linkedPsicologoId, setLinkedPsicologoId] = useState(null);
+  const [myPhotoUrl, setMyPhotoUrl] = useState(null);
   const [pendingLink, setPendingLink] = useState(null);
   const [linkChecked, setLinkChecked] = useState(false);
   const [skippedLink, setSkippedLink] = useState(false);
@@ -94,6 +96,15 @@ function App(){
       applyTheme(key);
     })();
   }, [currentUser, linkVersion]);
+
+  // Busca a própria foto de perfil (psicólogo ou paciente) para exibir no avatar do topo.
+  useEffect(() => {
+    if(!currentUser){ setMyPhotoUrl(null); return; }
+    (async () => {
+      const me = await fetchProfile(currentUser.id);
+      setMyPhotoUrl(me && me.photoPath ? getProfessionalPhotoUrl(me.photoPath) : null);
+    })();
+  }, [currentUser]);
 
   // Verifica se existe um convite de vínculo pendente (US-032) para o e-mail deste paciente.
   useEffect(() => {
@@ -259,7 +270,9 @@ function App(){
           {role === 'psicologo' && <NotificationsBell ownerId={currentUser.id} namespace="notifications" />}
           {role === 'paciente' && <NotificationsBell ownerId={currentUser.id} namespace="patientNotifications" />}
           <div className="account-menu-wrap">
-            <button className="avatar" style={{width:30,height:30,fontSize:11,border:'none',cursor:'pointer'}} onClick={()=>setMenuOpen(o=>!o)}>{initials}</button>
+            <button className="avatar" style={{width:30,height:30,fontSize:11,border:'none',cursor:'pointer',overflow:'hidden',padding:0}} onClick={()=>setMenuOpen(o=>!o)}>
+              {myPhotoUrl ? <img src={myPhotoUrl} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} /> : initials}
+            </button>
             {menuOpen && (
               <AccountMenu user={currentUser} onLogout={()=>logout('')} onOpenProfile={()=>{ setMenuOpen(false); setShowProfile(true); }} onOpenPrivacy={()=>{ setMenuOpen(false); setShowPrivacy(true); }} onClose={()=>setMenuOpen(false)} />
             )}
@@ -288,7 +301,9 @@ function App(){
           {role === 'paciente' && <NotificationsBell ownerId={currentUser.id} namespace="patientNotifications" />}
             <div className="account-menu-wrap">
               <button onClick={()=>setMenuOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:8,background:'none',border:'none',cursor:'pointer'}}>
-                <div className="avatar">{initials}</div>
+                <div className="avatar" style={{overflow:'hidden'}}>
+                  {myPhotoUrl ? <img src={myPhotoUrl} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} /> : initials}
+                </div>
                 <IconChevronDown size={15} color="var(--ink-muted)" />
               </button>
               {menuOpen && (

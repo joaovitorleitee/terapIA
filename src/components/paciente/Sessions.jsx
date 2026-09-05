@@ -333,6 +333,7 @@ function MinhasSessoesPaciente({ user }){
   const [cancelTarget, setCancelTarget] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [view, setView] = useState('lista'); // lista | calendario
+  const [visibleMoreCount, setVisibleMoreCount] = useState(5);
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
@@ -409,8 +410,37 @@ function MinhasSessoesPaciente({ user }){
 
   const mySessions = sessions.filter(s => s.patientId === patientRecord.id).sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
   const upcoming = mySessions.filter(s => s.date >= todayStr() && (s.status === 'confirmada' || s.status === 'pendente' || s.status === 'agendada'));
+  const nextSession = upcoming[0] || null;
+  const otherUpcoming = upcoming.slice(1);
+  const visibleOtherUpcoming = otherUpcoming.slice(0, visibleMoreCount);
+  const completed = mySessions
+    .filter(s => !upcoming.includes(s))
+    .sort((a,b) => (b.date+b.startTime).localeCompare(a.date+a.startTime));
   const statusLabel = { agendada:'Agendada', confirmada:'Confirmada', pendente:'Pendente de aprovação', cancelada:'Cancelada', realizada:'Realizada', reagendada:'Reagendada', falta:'Falta' };
   const canModify = (s) => (s.status === 'confirmada' || s.status === 'pendente' || s.status === 'agendada') && s.date >= todayStr();
+
+  const renderCard = (s) => (
+    <div className="session-card" key={s.id}>
+      <div>
+        <div className="sc-date">{formatDateOnly(s.date)} às {s.startTime}</div>
+        <div className="sc-meta">{s.durationMin} min · {s.modalidade || 'Presencial'}</div>
+        {availability && availability.meetingLink && ['confirmada','agendada'].includes(s.status) && (
+          <a href={availability.meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
+            Entrar na sessão →
+          </a>
+        )}
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:10}}>
+        {canModify(s) && (
+          <div style={{display:'flex', gap:10}}>
+            <button className="btn-link" onClick={()=>setRescheduleTarget(s)}>Reagendar</button>
+            <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>setCancelTarget(s)}>Cancelar</button>
+          </div>
+        )}
+        <span className={'badge status-'+s.status}>{statusLabel[s.status] || s.status}</span>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -437,28 +467,37 @@ function MinhasSessoesPaciente({ user }){
       ) : view === 'calendario' ? (
         <MinhasSessoesCalendario mySessions={mySessions} statusLabel={statusLabel} />
       ) : (
-        mySessions.map(s => (
-          <div className="session-card" key={s.id}>
-            <div>
-              <div className="sc-date">{formatDateOnly(s.date)} às {s.startTime}</div>
-              <div className="sc-meta">{s.durationMin} min · {s.modalidade || 'Presencial'}</div>
-              {availability && availability.meetingLink && ['confirmada','agendada'].includes(s.status) && (
-                <a href={availability.meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
-                  Entrar na sessão →
-                </a>
+        <React.Fragment>
+          {nextSession && (
+            <React.Fragment>
+              <h3 style={{fontSize:15, marginBottom:10}}>Próxima sessão</h3>
+              {renderCard(nextSession)}
+            </React.Fragment>
+          )}
+
+          {otherUpcoming.length > 0 && (
+            <React.Fragment>
+              <h3 style={{fontSize:15, margin:'22px 0 10px 0'}}>Próximas sessões</h3>
+              {visibleOtherUpcoming.map(renderCard)}
+              {visibleMoreCount < otherUpcoming.length && (
+                <button className="btn-secondary" style={{width:'auto', padding:'9px 18px', marginTop:4}} onClick={()=>setVisibleMoreCount(n => n + 5)}>
+                  Carregar mais
+                </button>
               )}
-            </div>
-            <div style={{display:'flex', alignItems:'center', gap:10}}>
-              {canModify(s) && (
-                <div style={{display:'flex', gap:10}}>
-                  <button className="btn-link" onClick={()=>setRescheduleTarget(s)}>Reagendar</button>
-                  <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>setCancelTarget(s)}>Cancelar</button>
-                </div>
-              )}
-              <span className={'badge status-'+s.status}>{statusLabel[s.status] || s.status}</span>
-            </div>
-          </div>
-        ))
+            </React.Fragment>
+          )}
+
+          {completed.length > 0 && (
+            <React.Fragment>
+              <h3 style={{fontSize:15, margin:'22px 0 10px 0'}}>Sessões concluídas</h3>
+              {completed.map(renderCard)}
+            </React.Fragment>
+          )}
+
+          {!nextSession && otherUpcoming.length === 0 && (
+            <div className="field hint">Nenhuma sessão futura agendada.</div>
+          )}
+        </React.Fragment>
       )}
 
       {showBooking && (
