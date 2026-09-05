@@ -8,6 +8,7 @@ import {
   generateSlots, computeSlotStatus, formatDateOnly, formatCurrency, DEFAULT_SESSION_PRICE, MONTH_NAMES,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconCheckCircle, IconXCircle, IconChevronLeft, IconChevronRight, IconTrash, IconClockRewind } from '../icons.jsx';
+import { showToast } from '../../lib/toast.js';
 
 function BookingModePanel({ availability, onChange }){
   return (
@@ -30,12 +31,10 @@ function BookingModePanel({ availability, onChange }){
 
 function MeetingLinkPanel({ availability, onChange }){
   const [value, setValue] = useState(availability.meetingLink || '');
-  const [saved, setSaved] = useState(false);
 
   const save = () => {
     onChange({ ...availability, meetingLink: value.trim() });
-    setSaved(true);
-    setTimeout(()=>setSaved(false), 1500);
+    showToast('Link de reunião salvo com sucesso.');
   };
 
   return (
@@ -47,7 +46,7 @@ function MeetingLinkPanel({ availability, onChange }){
       </div>
       <div className="modal-actions" style={{marginTop:12, justifyContent:'flex-start'}}>
         <button className="btn-primary" type="button" style={{width:'auto', padding:'9px 18px'}} onClick={save}>
-          {saved ? 'Salvo!' : 'Salvar link'}
+          Salvar link
         </button>
       </div>
     </div>
@@ -774,7 +773,6 @@ function AgendaPsicologo({ psicologoId }){
   const [patients, setPatients] = useState([]);
   const [cancelPolicy, setCancelPolicy] = useState(null);
   const [pricing, setPricing] = useState(null);
-  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved
 
   const refresh = useCallback(async () => {
     const [a, b, s, p, c, pr] = await Promise.all([loadAvailability(psicologoId), loadBlocks(), loadSessions(), loadPatients(), loadCancelPolicy(psicologoId), loadPricing(psicologoId)]);
@@ -790,18 +788,14 @@ function AgendaPsicologo({ psicologoId }){
 
   const persistAvailability = async (next) => {
     setAvailability(next);
-    setSaveState('saving');
     await saveAvailability(psicologoId, next);
-    setSaveState('saved');
-    setTimeout(()=>setSaveState('idle'), 1500);
+    showToast('Configuração salva com sucesso.');
   };
 
   const persistCancelPolicy = async (next) => {
     setCancelPolicy(next);
-    setSaveState('saving');
     await saveCancelPolicy(psicologoId, next);
-    setSaveState('saved');
-    setTimeout(()=>setSaveState('idle'), 1500);
+    showToast('Configuração salva com sucesso.');
   };
 
   const addBlock = async (b) => {
@@ -809,18 +803,21 @@ function AgendaPsicologo({ psicologoId }){
     const updated = [...all, b];
     await saveBlocks(updated);
     setBlocks(updated.filter(x => x.psicologoId === psicologoId));
+    showToast('Bloqueio adicionado com sucesso.');
   };
   const removeBlock = async (id) => {
     const all = await loadBlocks();
     const updated = all.filter(b => b.id !== id);
     await saveBlocks(updated);
     setBlocks(updated.filter(x => x.psicologoId === psicologoId));
+    showToast('Bloqueio removido com sucesso.');
   };
   const createSession = async (s) => {
     const all = await loadSessions();
     const updated = [...all, s];
     await saveSessions(updated);
     setSessions(updated.filter(x => x.psicologoId === psicologoId));
+    showToast('Sessão criada com sucesso.');
   };
   const createSessions = async (list) => {
     if(!list.length) return;
@@ -828,6 +825,7 @@ function AgendaPsicologo({ psicologoId }){
     const updated = [...all, ...list];
     await saveSessions(updated);
     setSessions(updated.filter(x => x.psicologoId === psicologoId));
+    showToast(`${list.length} sessão(ões) criada(s) com sucesso.`);
   };
 
   const updateSession = async (id, patch) => {
@@ -835,6 +833,7 @@ function AgendaPsicologo({ psicologoId }){
     const updated = all.map(s => s.id === id ? { ...s, ...patch } : s);
     await saveSessions(updated);
     setSessions(updated.filter(x => x.psicologoId === psicologoId));
+    showToast('Sessão atualizada com sucesso.');
   };
 
   if(!availability || !cancelPolicy || !pricing) return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando agenda…</div>;
@@ -846,11 +845,6 @@ function AgendaPsicologo({ psicologoId }){
         <button className={tab==='cancelamento'?'active':''} onClick={()=>setTab('cancelamento')}>Cancelamento</button>
         <button className={tab==='calendario'?'active':''} onClick={()=>setTab('calendario')}>Calendário</button>
       </div>
-      {saveState !== 'idle' && (
-        <div className="alert alert-success" style={{display:'inline-flex'}}>
-          {saveState==='saving' ? 'Salvando…' : 'Configuração salva.'}
-        </div>
-      )}
       {tab === 'disponibilidade' && (
         <div>
           <BookingModePanel availability={availability} onChange={persistAvailability} />

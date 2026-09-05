@@ -5,6 +5,7 @@ import {
   loadDataRightsConfig, saveDataRightsConfig, exportMyData, loadMyDeletionRequests, createDeletionRequest,
   getProfessionalPhotoUrl, uploadProfessionalPhoto,
 } from '../lib/dataStore.js';
+import { showToast } from '../lib/toast.js';
 import { IconBell, IconEdit, IconLogOut, IconCheckCircle, IconShield, IconUsers } from './icons.jsx';
 
 function NotificationsBell({ ownerId, namespace='notifications' }){
@@ -95,8 +96,8 @@ function ProfileSettingsModal({ psicologoId, onClose }){
   const saveProfile = async () => {
     setSaveState('saving');
     await saveProfessionalProfile(psicologoId, profile);
-    setSaveState('saved');
-    setTimeout(() => setSaveState('idle'), 1500);
+    setSaveState('idle');
+    showToast('Informações salvas com sucesso.');
   };
 
   const handlePhotoChosen = async (e) => {
@@ -110,6 +111,7 @@ function ProfileSettingsModal({ psicologoId, onClose }){
     if(result.error){ setPhotoError(result.error); return; }
     setProfile(p => ({ ...p, photoPath: result.photoPath }));
     setPhotoUrl(getProfessionalPhotoUrl(result.photoPath) + '?t=' + Date.now()); // evita cache do navegador na mesma URL
+    showToast('Foto atualizada com sucesso.');
   };
 
   return (
@@ -143,7 +145,7 @@ function ProfileSettingsModal({ psicologoId, onClose }){
         {tab === 'profissional' && loaded && (
           <div>
             <div className="field hint" style={{marginBottom:14}}>Essas informações ajudam o paciente a te conhecer melhor.</div>
-            {saveState !== 'idle' && <div className="alert alert-success" style={{display:'inline-flex'}}>{saveState==='saving'?'Salvando…':'Salvo.'}</div>}
+            {saveState==='saving' && <div className="field hint">Salvando…</div>}
 
             <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:18}}>
               <div style={{width:64, height:64, borderRadius:'50%', overflow:'hidden', background:'var(--primary-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
@@ -181,7 +183,7 @@ function ProfileSettingsModal({ psicologoId, onClose }){
         {tab === 'fiscal' && loaded && (
           <div>
             <div className="field hint" style={{marginBottom:14}}>Necessário para emitir recibos com validade completa e, futuramente, nota fiscal e cobrança digital. Nunca é exibido ao paciente, exceto o que compõe legalmente o recibo.</div>
-            {saveState !== 'idle' && <div className="alert alert-success" style={{display:'inline-flex'}}>{saveState==='saving'?'Salvando…':'Salvo.'}</div>}
+            {saveState==='saving' && <div className="field hint">Salvando…</div>}
             <div className="form-grid">
               <div className="field">
                 <label>CPF ou CNPJ</label>
@@ -253,7 +255,7 @@ function PrivacyModal({ currentUser, patientRecord, psicologoId, onClose }){
 
   const doExport = async () => {
     setExporting(true);
-    try{ await exportMyData(currentUser, patientRecord); }
+    try{ await exportMyData(currentUser, patientRecord); showToast('Download iniciado.'); }
     finally{ setExporting(false); }
   };
 
@@ -269,6 +271,7 @@ function PrivacyModal({ currentUser, patientRecord, psicologoId, onClose }){
       });
       await refresh();
       setConfirmingDelete(false);
+      showToast('Solicitação enviada com sucesso.');
     } finally { setRequesting(false); }
   };
 

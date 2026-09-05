@@ -3,6 +3,7 @@ import {
   loadPatients, loadPatientDocuments, uploadPatientDocument, getPatientDocumentUrl, deletePatientDocument,
   formatDate, DOCUMENT_CATEGORIES,
 } from '../../lib/dataStore.js';
+import { showToast } from '../../lib/toast.js';
 import { IconUserPlus, IconPlus, IconTrash, IconNote } from '../icons.jsx';
 
 function DocumentosPaciente({ user }){
@@ -40,6 +41,7 @@ function DocumentosPaciente({ user }){
     if(result.error){ setError(result.error); return; }
     setDescription('');
     await refresh();
+    showToast('Documento enviado com sucesso.');
   };
 
   const openDocument = async (doc) => {
@@ -52,6 +54,7 @@ function DocumentosPaciente({ user }){
     if(!ok) return;
     await deletePatientDocument(doc.id, doc.storagePath);
     await refresh();
+    showToast('Documento excluído com sucesso.');
   };
 
   const formatSize = (bytes) => {

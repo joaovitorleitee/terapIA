@@ -5,9 +5,143 @@ import {
   loadSessions, loadNotes, saveNotes, noteId, pushAudit, formatDate, formatDateOnly, loadPatients,
   DOCUMENT_CATEGORIES, loadPatientDocuments, updatePatientDocument, deletePatientDocument, getPatientDocumentUrl,
   loadJournalEntries, MOOD_OPTIONS, todayStr,
+  loadTasks, saveTasks, deleteTask, taskId, pushPatientNotification,
 } from '../../lib/dataStore.js';
+import { showToast } from '../../lib/toast.js';
 import { TagInput } from '../shared.jsx';
-import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash, IconBook } from '../icons.jsx';
+import { IconLock, IconPlus, IconChevronLeft, IconChevronRight, IconNote, IconUsers, IconTrash, IconBook, IconTask } from '../icons.jsx';
+import { TaskFormModal } from './Tasks.jsx';
+
+function PatientTasksPanel({ psicologoId, patient }){
+  const [tasks, setTasks] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+
+  const refresh = useCallback(async () => {
+    const all = await loadTasks();
+    setTasks(all.filter(t => t.psicologoId === psicologoId && t.patientId === patient.id)
+                 .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  }, [psicologoId, patient.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const statusLabel = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluída', cancelada:'Cancelada' };
+  const frequencyLabel = { unica:'Única', diaria:'Diária', semanal:'Semanal' };
+
+  const saveTask = async (data) => {
+    const all = await loadTasks();
+    if(editingTask){
+      const updated = all.map(t => t.id === editingTask.id ? { ...t, ...data } : t);
+      await saveTasks(updated);
+      showToast('Tarefa atualizada com sucesso.');
+    } else {
+      const now = new Date().toISOString();
+      const newTask = {
+        id: taskId(), psicologoId, status:'pendente', createdAt: now,
+        history: [{ status:'pendente', changedAt: now, by:'psicologo' }],
+        patientResponse: '', patientLinks: [],
+        ...data,
+      };
+      await saveTasks([...all, newTask]);
+      await pushPatientNotification(patient.email, { type:'tarefa', message:`Nova tarefa: "${data.title}"` });
+      showToast('Tarefa criada com sucesso.');
+    }
+    setShowForm(false);
+    setEditingTask(null);
+    await refresh();
+  };
+
+  const toggleCancel = async (task) => {
+    const all = await loadTasks();
+    const newStatus = task.status === 'cancelada' ? 'pendente' : 'cancelada';
+    const now = new Date().toISOString();
+    const updated = all.map(t => t.id === task.id
+      ? { ...t, status:newStatus, history:[...(t.history||[]), { status:newStatus, changedAt:now, by:'psicologo' }] }
+      : t);
+    await saveTasks(updated);
+    await refresh();
+    showToast(newStatus === 'cancelada' ? 'Tarefa cancelada com sucesso.' : 'Tarefa reativada com sucesso.');
+  };
+
+  const removeTask = async (task) => {
+    const ok = window.confirm(`Excluir a tarefa "${task.title}" definitivamente? Essa ação não pode ser desfeita.`);
+    if(!ok) return;
+    await deleteTask(task.id);
+    await refresh();
+    showToast('Tarefa excluída com sucesso.');
+  };
+
+  if(tasks === null){
+    return <div style={{padding:20, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando tarefas…</div>;
+  }
+
+  return (
+    <div>
+      <div className="toolbar">
+        <div className="field hint" style={{flex:1, margin:0}}>Tarefas de casa deste paciente, com as respostas dele.</div>
+        <button className="btn-new" onClick={()=>{ setEditingTask(null); setShowForm(true); }}><IconPlus size={15}/> Nova tarefa</button>
+      </div>
+
+      {tasks.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon-wrap"><IconTask size={24}/></div>
+          <h2>Nenhuma tarefa ainda</h2>
+          <p>Crie a primeira tarefa de casa para este paciente.</p>
+        </div>
+      ) : tasks.map(t => {
+        const isLate = t.dueDate && t.dueDate < todayStr() && (t.status === 'pendente' || t.status === 'em_andamento');
+        const displayStatus = isLate ? 'atrasada' : t.status;
+        return (
+          <div className="task-card" key={t.id}>
+            <div className="tc-top">
+              <div className="tc-title">{t.title}</div>
+              <span className={'badge status-'+displayStatus}>{isLate ? 'Atrasada' : statusLabel[t.status]}</span>
+            </div>
+            <div className="tc-instructions">{t.instructions}</div>
+            <div className="tc-meta-row">
+              <span>Frequência: {frequencyLabel[t.frequency]}</span>
+              {t.dueDate && <span>Prazo: {formatDateOnly(t.dueDate)}</span>}
+              {t.sessionId && <span>Vinculada a uma sessão</span>}
+            </div>
+            {t.links && t.links.length > 0 && (
+              <div className="tc-links">
+                {t.links.map((l,i) => <a key={i} href={l} target="_blank" rel="noopener noreferrer">{l}</a>)}
+              </div>
+            )}
+            {(t.patientResponse || (t.patientLinks && t.patientLinks.length > 0)) && (
+              <div style={{marginTop:10, padding:'10px 12px', background:'var(--surface-alt)', borderRadius:10}}>
+                <div style={{fontSize:11, fontWeight:700, color:'var(--ink-muted)', marginBottom:4}}>Resposta do paciente</div>
+                {t.patientResponse && <div style={{fontSize:12.5, color:'var(--ink)', whiteSpace:'pre-wrap'}}>{t.patientResponse}</div>}
+                {t.patientLinks && t.patientLinks.length > 0 && (
+                  <div className="tc-links" style={{marginTop:6}}>
+                    {t.patientLinks.map((l,i) => <a key={i} href={l} target="_blank" rel="noopener noreferrer">{l}</a>)}
+                  </div>
+                )}
+              </div>
+            )}
+            {t.history && t.history.length > 1 && (
+              <div style={{marginTop:8, fontSize:11, color:'var(--ink-faint)'}}>
+                Histórico: {t.history.map((h,i) => `${statusLabel[h.status]||h.status} (${h.by === 'paciente' ? 'paciente' : 'você'}, ${formatDate(h.changedAt)})`).join(' → ')}
+              </div>
+            )}
+            <div className="tc-actions">
+              <button className="btn-link" onClick={()=>{ setEditingTask(t); setShowForm(true); }}>Editar</button>
+              <button className="btn-link" style={{color: t.status==='cancelada' ? 'var(--primary-dark)' : 'var(--danger)'}} onClick={()=>toggleCancel(t)}>
+                {t.status === 'cancelada' ? 'Reativar' : 'Cancelar tarefa'}
+              </button>
+              <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>removeTask(t)}>Excluir</button>
+            </div>
+          </div>
+        );
+      })}
+
+      {showForm && (
+        <TaskFormModal psicologoId={psicologoId} patients={[patient]} templates={[]} editingTask={editingTask}
+                        onClose={()=>{ setShowForm(false); setEditingTask(null); }} onSave={saveTask} />
+      )}
+    </div>
+  );
+}
 
 function JournalPanel({ patientId }){
   const [entries, setEntries] = useState(null);
@@ -60,6 +194,7 @@ function DocumentsPanel({ psicologoId, patientId }){
     await updatePatientDocument(id, { category: editCategory, description: editDescription });
     setEditingId(null);
     await refresh();
+    showToast('Documento atualizado com sucesso.');
   };
 
   const openDocument = async (doc) => {
@@ -74,6 +209,7 @@ function DocumentsPanel({ psicologoId, patientId }){
     await deletePatientDocument(doc.id, doc.storagePath);
     await refresh();
     setBusyId(null);
+    showToast('Documento excluído com sucesso.');
   };
 
   const formatSize = (bytes) => {
@@ -370,10 +506,12 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
       const updated = all.map(n => n.id === editingNote.id ? { ...n, ...data, updatedAt:new Date().toISOString() } : n);
       await saveNotes(updated);
       await pushAudit({ userId:currentUserId, action:'nota_editada', patientId:patient.id, noteId:editingNote.id });
+      showToast('Nota atualizada com sucesso.');
     } else {
       const newNote = { id: noteId(), psicologoId, patientId: patient.id, ...data, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(), deleted:false };
       await saveNotes([...all, newNote]);
       await pushAudit({ userId:currentUserId, action:'nota_criada', patientId:patient.id, noteId:newNote.id });
+      showToast('Nota criada com sucesso.');
     }
     setShowForm(false);
     setEditingNote(null);
@@ -386,6 +524,7 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
     await saveNotes(updated); // soft-delete: preserva a nota e a trilha de auditoria
     await pushAudit({ userId:currentUserId, action:'nota_excluida', patientId:patient.id, noteId:n.id });
     await refresh();
+    showToast('Nota excluída com sucesso.');
   };
 
   const [showExportModal, setShowExportModal] = useState(false);
@@ -401,6 +540,7 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
       downloadBlob(blob, `prontuario-${slug}.pdf`);
     }
     await pushAudit({ userId: currentUserId, action:'prontuario_exportado', patientId: patient.id });
+    showToast('Prontuário exportado com sucesso.');
   };
 
   if(loading) return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando prontuário…</div>;
@@ -425,9 +565,14 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
 
       <div className="subtabs">
         <button className={tab==='notas'?'active':''} onClick={()=>setTab('notas')}>Notas</button>
+        <button className={tab==='tarefas'?'active':''} onClick={()=>setTab('tarefas')}>Tarefas</button>
         <button className={tab==='diario'?'active':''} onClick={()=>setTab('diario')}>Diário</button>
         <button className={tab==='documentos'?'active':''} onClick={()=>setTab('documentos')}>Documentos</button>
       </div>
+
+      {tab === 'tarefas' && (
+        <PatientTasksPanel psicologoId={psicologoId} patient={patient} />
+      )}
 
       {tab === 'diario' && (
         <JournalPanel patientId={patient.id} />

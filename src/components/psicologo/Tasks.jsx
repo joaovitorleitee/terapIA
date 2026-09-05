@@ -465,4 +465,4 @@ function TarefasPsicologo({ psicologoId }){
   );
 }
 
-export { TarefasPsicologo };
+export { TarefasPsicologo, TaskFormModal };

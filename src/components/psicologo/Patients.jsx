@@ -4,6 +4,7 @@ import {
   loadPatients, savePatients, patientId, EMAIL_RE, TERMS_VERSION, formatDateOnly,
   loadDeletionRequestsForPsicologo, resolveDeletionRequest, formatDate, getProfessionalPhotoUrl,
 } from '../../lib/dataStore.js';
+import { showToast } from '../../lib/toast.js';
 import { IconPlus, IconSearch, IconEdit, IconArchive, IconUserPlus, IconShield } from '../icons.jsx';
 
 function PatientFormModal({ patient, onClose, onSave }){
@@ -133,6 +134,7 @@ function PacientesPsicologo({ psicologoId }){
     try{
       await resolveDeletionRequest(request.id, request.patientId, 'Dados anonimizados pelo psicólogo.');
       await refresh();
+      showToast('Dados anonimizados com sucesso.');
     } finally { setResolvingId(null); }
   };
 
@@ -147,9 +149,11 @@ function PacientesPsicologo({ psicologoId }){
     if(editing && editing !== 'new'){
       const updated = all.map(p => p.id === editing.id ? { ...p, ...form } : p);
       await savePatients(updated);
+      showToast('Paciente atualizado com sucesso.');
     } else {
       const newPatient = { id: patientId(), psicologoId, status:'ativo', createdAt:new Date().toISOString(), ...form };
       await savePatients([...all, newPatient]);
+      showToast('Paciente cadastrado com sucesso.');
     }
     setEditing(null);
     await refresh();
@@ -157,9 +161,11 @@ function PacientesPsicologo({ psicologoId }){
 
   const toggleStatus = async (patient) => {
     const all = await loadPatients();
-    const updated = all.map(p => p.id === patient.id ? { ...p, status: p.status === 'ativo' ? 'arquivado' : 'ativo' } : p);
+    const willArchive = patient.status === 'ativo';
+    const updated = all.map(p => p.id === patient.id ? { ...p, status: willArchive ? 'arquivado' : 'ativo' } : p);
     await savePatients(updated);
     await refresh();
+    showToast(willArchive ? 'Paciente arquivado com sucesso.' : 'Paciente reativado com sucesso.');
   };
 
   if(patients === null){

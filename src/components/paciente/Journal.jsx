@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { loadPatients, loadJournalEntries, saveJournalEntry, formatDateOnly, todayStr, MOOD_OPTIONS } from '../../lib/dataStore.js';
 import { IconUserPlus, IconNote } from '../icons.jsx';
+import { showToast } from '../../lib/toast.js';
 
 function DiarioPaciente({ user }){
   const [loading, setLoading] = useState(true);
@@ -9,7 +10,6 @@ function DiarioPaciente({ user }){
   const [mood, setMood] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
@@ -31,9 +31,8 @@ function DiarioPaciente({ user }){
     setSaving(true);
     await saveJournalEntry({ psicologoId: patientRecord.psicologoId, patientId: patientRecord.id, entryDate: todayStr(), mood, content: content.trim() });
     setSaving(false);
-    setSaved(true);
-    setTimeout(()=>setSaved(false), 2000);
     await refresh();
+    showToast('Entrada de diário salva com sucesso.');
   };
 
   if(loading) return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>;
@@ -69,7 +68,7 @@ function DiarioPaciente({ user }){
                   style={{width:'100%', padding:'10px 12px', border:'1px solid var(--border)', borderRadius:10, fontFamily:'inherit', fontSize:14, resize:'vertical'}} />
         <button className="btn-primary" style={{width:'auto', padding:'10px 20px', marginTop:12}} onClick={save} disabled={saving || !content.trim()}>
           {saving && <span className="spinner"/>}
-          {saving ? 'Salvando…' : saved ? 'Salvo!' : 'Salvar entrada de hoje'}
+          {saving ? 'Salvando…' : 'Salvar entrada de hoje'}
         </button>
       </div>
 

@@ -24,6 +24,7 @@ import { MinhasTarefasPaciente } from './components/paciente/Tasks.jsx';
 import PagamentosPaciente from './components/paciente/Payments.jsx';
 import { DocumentosPaciente } from './components/paciente/Documents.jsx';
 import { DiarioPaciente } from './components/paciente/Journal.jsx';
+import { ToastContainer } from './components/Toast.jsx';
 
 function App(){
   const [authView, setAuthView] = useState('select-role'); // select-role | login | register | forgot
@@ -155,6 +156,7 @@ function App(){
   if(!currentUser){
     return (
       <React.Fragment>
+        <ToastContainer />
         {sessionNotice && (
           <div style={{position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', zIndex:60, maxWidth:420, width:'calc(100% - 32px)'}}>
             <div className="alert alert-danger" style={{margin:0, boxShadow:'var(--shadow-lg)'}}>
@@ -223,6 +225,7 @@ function App(){
 
   return (
     <div className="app">
+      <ToastContainer />
       {/* Desktop sidebar */}
       <aside className="sidebar">
         <div className="brand">

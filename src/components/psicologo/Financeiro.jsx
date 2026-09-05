@@ -10,19 +10,16 @@ import {
 } from '../../lib/dataStore.js';
 import { IconPlus, IconWallet, IconTrash } from '../icons.jsx';
 import { PixQrModal } from '../shared.jsx';
+import { showToast } from '../../lib/toast.js';
 
 function PrecosPanel({ psicologoId }){
   const [pricing, setPricing] = useState(null);
-  const [saveState, setSaveState] = useState('idle');
 
   useEffect(() => { (async () => setPricing(await loadPricing(psicologoId)))(); }, [psicologoId]);
 
   const update = async (next) => {
     setPricing(next);
-    setSaveState('saving');
     await savePricing(psicologoId, next);
-    setSaveState('saved');
-    setTimeout(()=>setSaveState('idle'), 1500);
   };
 
   if(!pricing) return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando…</div>;
@@ -31,19 +28,14 @@ function PrecosPanel({ psicologoId }){
     <div className="panel">
       <h3>Valor padrão por tipo de sessão</h3>
       <div className="panel-sub">Usado automaticamente ao criar novas sessões. Alterar aqui não modifica sessões já criadas.</div>
-      {saveState !== 'idle' && (
-        <div className="alert alert-success" style={{display:'inline-flex', marginBottom:14}}>
-          {saveState==='saving' ? 'Salvando…' : 'Salvo.'}
-        </div>
-      )}
       <div className="inline-fields">
         <div className="field">
           <label>Sessão presencial (R$)</label>
-          <input type="number" min="0" step="10" value={pricing.presencial} onChange={e=>update({ ...pricing, presencial:Number(e.target.value)||0 })} />
+          <input type="number" min="0" step="10" value={pricing.presencial} onChange={e=>update({ ...pricing, presencial:Number(e.target.value)||0 })} onBlur={()=>showToast('Preço salvo com sucesso.')} />
         </div>
         <div className="field">
           <label>Sessão online (R$)</label>
-          <input type="number" min="0" step="10" value={pricing.online} onChange={e=>update({ ...pricing, online:Number(e.target.value)||0 })} />
+          <input type="number" min="0" step="10" value={pricing.online} onChange={e=>update({ ...pricing, online:Number(e.target.value)||0 })} onBlur={()=>showToast('Preço salvo com sucesso.')} />
         </div>
       </div>
       <div className="field hint">Para um valor específico de um paciente, edite o cadastro dele em "Pacientes" — ele sempre sobrepõe o padrão acima.</div>
@@ -70,6 +62,7 @@ function ReceiptsPanel({ psicologoId }){
     await saveReceipts(updated);
     await pushAudit({ userId: psicologoId, action:'recibo_cancelado', patientId: receipt.patientId });
     await refresh();
+    showToast('Recibo cancelado com sucesso.');
   };
 
   const reissue = async (receipt) => {
@@ -84,6 +77,7 @@ function ReceiptsPanel({ psicologoId }){
     await pushAudit({ userId: psicologoId, action:'recibo_emitido', patientId: receipt.patientId });
     generateReceiptPDF(newReceipt);
     await refresh();
+    showToast('Novo recibo emitido com sucesso.');
   };
 
   if(receipts === null) return <div style={{padding:40, textAlign:'center', color:'var(--ink-faint)', fontSize:13}}>Carregando recibos…</div>;
@@ -214,11 +208,13 @@ function DespesasPanel({ psicologoId }){
     const newExpense = { id: expenseId(), psicologoId, createdAt:new Date().toISOString(), ...data };
     await saveExpenses([...all, newExpense]);
     await refresh();
+    showToast('Despesa adicionada com sucesso.');
   };
 
   const removeExpense = async (id) => {
     await deleteExpense(id);
     await refresh();
+    showToast('Despesa removida com sucesso.');
   };
 
   if(expenses === null){
@@ -435,6 +431,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     setShowChargeForm(false);
     setPresetSession(null);
     await refresh();
+    showToast('Cobrança criada com sucesso.');
   };
 
   const issueReceipt = async (charge) => {
@@ -453,6 +450,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     await pushAudit({ userId: psicologoId, action:'recibo_emitido', patientId: charge.patientId });
     generateReceiptPDF(newReceipt);
     await refresh();
+    showToast('Recibo emitido com sucesso.');
   };
 
   const registerPayment = async (data) => {
@@ -467,6 +465,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     await pushAudit({ userId: psicologoId, action:'pagamento_registrado', patientId: payingCharge.patientId });
     setPayingCharge(null);
     await refresh();
+    showToast('Pagamento registrado com sucesso.');
   };
 
   const cancelCharge = async (charge) => {
@@ -475,6 +474,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     await saveCharges(updated);
     await pushAudit({ userId: psicologoId, action:'cobranca_cancelada', patientId: charge.patientId });
     await refresh();
+    showToast('Cobrança cancelada com sucesso.');
   };
 
   const refundCharge = async (charge) => {
@@ -483,6 +483,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
     await saveCharges(updated);
     await pushAudit({ userId: psicologoId, action:'cobranca_reembolsada', patientId: charge.patientId });
     await refresh();
+    showToast('Cobrança reembolsada com sucesso.');
   };
 
   if(charges === null){
