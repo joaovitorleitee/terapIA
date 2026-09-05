@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000; // 20 min — inatividade (camada extra de segurança no cliente)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -227,17 +228,20 @@ async function loadProfessionalProfile(psicologoId){
   const fiscal = fiscalRes.data || {};
   return {
     crp: info.crp || '', specialty: info.specialty || '', bio: info.bio || '',
-    cpfCnpj: fiscal.cpf_cnpj || '', taxRegime: fiscal.tax_regime || '', city: fiscal.city || '',
-    bankName: fiscal.bank_name || '', bankAgency: fiscal.bank_agency || '',
-    bankAccount: fiscal.bank_account || '', pixKey: fiscal.pix_key || '',
+    city: info.city || '', pixKey: info.pix_key || '',
+    cpfCnpj: fiscal.cpf_cnpj || '', taxRegime: fiscal.tax_regime || '',
+    bankName: fiscal.bank_name || '', bankAgency: fiscal.bank_agency || '', bankAccount: fiscal.bank_account || '',
   };
 }
 async function saveProfessionalProfile(psicologoId, profile){
-  const infoRow = { psicologo_id: psicologoId, crp: profile.crp || null, specialty: profile.specialty || null, bio: profile.bio || null, updated_at: new Date().toISOString() };
+  const infoRow = {
+    psicologo_id: psicologoId, crp: profile.crp || null, specialty: profile.specialty || null, bio: profile.bio || null,
+    city: profile.city || null, pix_key: profile.pixKey || null, updated_at: new Date().toISOString(),
+  };
   const fiscalRow = {
-    psicologo_id: psicologoId, cpf_cnpj: profile.cpfCnpj || null, tax_regime: profile.taxRegime || null, city: profile.city || null,
+    psicologo_id: psicologoId, cpf_cnpj: profile.cpfCnpj || null, tax_regime: profile.taxRegime || null,
     bank_name: profile.bankName || null, bank_agency: profile.bankAgency || null,
-    bank_account: profile.bankAccount || null, pix_key: profile.pixKey || null, updated_at: new Date().toISOString(),
+    bank_account: profile.bankAccount || null, updated_at: new Date().toISOString(),
   };
   const [infoRes, fiscalRes] = await Promise.all([
     supabase.from('professional_info').upsert(infoRow, { onConflict:'psicologo_id' }),
@@ -246,15 +250,58 @@ async function saveProfessionalProfile(psicologoId, profile){
   logDbError('saveProfessionalProfile (info)', infoRes.error);
   logDbError('saveProfessionalProfile (fiscal)', fiscalRes.error);
 }
-// Usado pelo paciente — só especialidade/apresentação, nunca dados fiscais (tabela separada, sem policy de paciente).
+// Usado pelo paciente — especialidade/apresentação/cidade/chave Pix, nunca CPF/CNPJ ou dados bancários
+// (essas ficam só em professional_profile, tabela sem nenhuma policy de paciente).
 async function loadProfessionalInfoPublic(psicologoId){
-  const { data, error } = await supabase.from('professional_info').select('crp, specialty, bio').eq('psicologo_id', psicologoId).maybeSingle();
+  const { data, error } = await supabase.from('professional_info').select('crp, specialty, bio, city, pix_key').eq('psicologo_id', psicologoId).maybeSingle();
   logDbError('loadProfessionalInfoPublic', error);
-  return data ? { crp: data.crp || '', specialty: data.specialty || '', bio: data.bio || '' } : null;
+  return data ? { crp: data.crp || '', specialty: data.specialty || '', bio: data.bio || '', city: data.city || '', pixKey: data.pix_key || '' } : null;
 }
 // Usado para liberar cobrança digital (US-017) e nota fiscal (US-019) no futuro — ambas ainda não construídas.
 function hasCompleteFiscalData(profile){
   return !!(profile && profile.cpfCnpj && profile.taxRegime && profile.city);
+}
+
+/* ================= Pix estático (US-017, escopo reduzido — sem gateway) ================= */
+function stripDiacriticsUpper(str){
+  return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+}
+function pixTlv(id, value){
+  const len = String(value.length).padStart(2, '0');
+  return `${id}${len}${value}`;
+}
+function pixCrc16(payload){
+  let crc = 0xFFFF;
+  for(let i = 0; i < payload.length; i++){
+    crc ^= payload.charCodeAt(i) << 8;
+    for(let j = 0; j < 8; j++){
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+// Gera o payload "Pix Copia e Cola" (BR Code), padrão aberto do Banco Central — não depende de
+// nenhum gateway ou conta externa, só da própria chave Pix já cadastrada pelo psicólogo.
+function buildPixPayload({ pixKey, merchantName, merchantCity, amount, txid, description }){
+  if(!pixKey) return null;
+  const merchantAccountInfo = pixTlv('00','BR.GOV.BCB.PIX') + pixTlv('01', pixKey) + (description ? pixTlv('02', stripDiacriticsUpper(description).slice(0,50)) : '');
+  let payload = '';
+  payload += pixTlv('00','01');
+  payload += pixTlv('26', merchantAccountInfo);
+  payload += pixTlv('52','0000');
+  payload += pixTlv('53','986');
+  if(amount) payload += pixTlv('54', Number(amount).toFixed(2));
+  payload += pixTlv('58','BR');
+  payload += pixTlv('59', stripDiacriticsUpper(merchantName || 'PSICOLOGO').slice(0,25) || 'PSICOLOGO');
+  payload += pixTlv('60', stripDiacriticsUpper(merchantCity || 'BRASIL').slice(0,15) || 'BRASIL');
+  const txidClean = (txid || '').replace(/[^a-zA-Z0-9]/g,'').slice(0,25) || '***';
+  payload += pixTlv('62', pixTlv('05', txidClean));
+  payload += '6304';
+  return payload + pixCrc16(payload);
+}
+async function generatePixQrDataUrl(payload){
+  return QRCode.toDataURL(payload, { margin: 1, width: 260 });
 }
 
 /* ================= Direitos do titular (LGPD) — exportação e exclusão ================= */
@@ -808,6 +855,7 @@ export {
   THEME_PALETTES, loadThemeColor, saveThemeColor, applyTheme,
   TAX_REGIMES, defaultProfessionalProfile, loadProfessionalProfile, saveProfessionalProfile,
   loadProfessionalInfoPublic, hasCompleteFiscalData,
+  buildPixPayload, generatePixQrDataUrl,
   loadDataRightsConfig, saveDataRightsConfig, exportMyData,
   loadMyDeletionRequests, loadDeletionRequestsForPsicologo, createDeletionRequest, resolveDeletionRequest,
   defaultPricing, loadPricing, savePricing, getDefaultPrice,

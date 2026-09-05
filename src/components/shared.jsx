@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconSparkle } from './icons.jsx';
-import { TERMS_VERSION } from '../lib/dataStore.js';
+import { TERMS_VERSION, buildPixPayload, generatePixQrDataUrl, formatCurrency } from '../lib/dataStore.js';
 
 function EmptyState({ builtBy }){
   return (
@@ -80,4 +80,40 @@ function AuthShell({ children }){
 }
 
 
-export { EmptyState, TagInput, TermsBody, TermsModal, AuthShell };
+function PixQrModal({ pixKey, merchantName, merchantCity, amount, txid, description, onClose }){
+  const [qrUrl, setQrUrl] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const payload = buildPixPayload({ pixKey, merchantName, merchantCity, amount, txid, description });
+
+  useEffect(() => {
+    if(!payload) return;
+    generatePixQrDataUrl(payload).then(setQrUrl).catch(()=>setQrUrl(null));
+  }, [payload]);
+
+  const copyPayload = async () => {
+    try{ await navigator.clipboard.writeText(payload); setCopied(true); setTimeout(()=>setCopied(false), 2000); }catch(e){}
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+        <h3>Pagar com Pix</h3>
+        {!pixKey ? (
+          <div className="alert alert-danger" style={{marginTop:10}}>O psicólogo ainda não cadastrou uma chave Pix.</div>
+        ) : (
+          <React.Fragment>
+            <div className="field hint" style={{marginBottom:14}}>Escaneie o QR Code com o app do seu banco, ou copie o código Pix abaixo.</div>
+            {qrUrl && <img src={qrUrl} alt="QR Code Pix" style={{width:220, height:220, margin:'0 auto 16px auto', display:'block'}} />}
+            <div style={{fontSize:18, fontWeight:700, marginBottom:14}}>{formatCurrency(amount)}</div>
+            <button className="btn-primary" type="button" onClick={copyPayload}>{copied ? 'Copiado!' : 'Copiar código Pix'}</button>
+          </React.Fragment>
+        )}
+        <div className="modal-actions" style={{marginTop:16}}>
+          <button className="btn-secondary" type="button" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export { EmptyState, TagInput, TermsBody, TermsModal, AuthShell, PixQrModal };

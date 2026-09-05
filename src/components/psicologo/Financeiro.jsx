@@ -9,6 +9,7 @@ import {
   pushAudit,
 } from '../../lib/dataStore.js';
 import { IconPlus, IconWallet, IconTrash } from '../icons.jsx';
+import { PixQrModal } from '../shared.jsx';
 
 function PrecosPanel({ psicologoId }){
   const [pricing, setPricing] = useState(null);
@@ -412,13 +413,16 @@ function RecebimentosPanel({ psicologoId, professionalName }){
   const [showChargeForm, setShowChargeForm] = useState(false);
   const [presetSession, setPresetSession] = useState(null);
   const [payingCharge, setPayingCharge] = useState(null);
+  const [pixCharge, setPixCharge] = useState(null);
+  const [profile, setProfile] = useState(null);
 
   const refresh = useCallback(async () => {
-    const [c, p, s, r] = await Promise.all([loadCharges(), loadPatients(), loadSessions(), loadReceipts()]);
+    const [c, p, s, r, prof] = await Promise.all([loadCharges(), loadPatients(), loadSessions(), loadReceipts(), loadProfessionalProfile(psicologoId)]);
     setCharges(c.filter(x => x.psicologoId === psicologoId));
     setPatients(p.filter(x => x.psicologoId === psicologoId));
     setSessions(s.filter(x => x.psicologoId === psicologoId));
     setReceipts(r.filter(x => x.psicologoId === psicologoId));
+    setProfile(prof);
   }, [psicologoId]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -579,6 +583,7 @@ function RecebimentosPanel({ psicologoId, professionalName }){
               )}
               <div className="cc-actions">
                 {canPay && <button className="btn-link" onClick={()=>setPayingCharge(c)}>Registrar pagamento</button>}
+                {canPay && <button className="btn-link" style={{fontWeight:700}} onClick={()=>setPixCharge(c)}>Pix</button>}
                 {canIssueReceipt && <button className="btn-link" style={{fontWeight:700}} onClick={()=>issueReceipt(c)}>Emitir recibo (PDF)</button>}
                 {canCancel && <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>cancelCharge(c)}>Cancelar</button>}
                 {canRefund && <button className="btn-link" style={{color:'var(--danger)'}} onClick={()=>refundCharge(c)}>Marcar como reembolsado</button>}
@@ -594,6 +599,13 @@ function RecebimentosPanel({ psicologoId, professionalName }){
       )}
       {payingCharge && (
         <PaymentFormModal charge={payingCharge} onClose={()=>setPayingCharge(null)} onSave={registerPayment} />
+      )}
+      {pixCharge && profile && (
+        <PixQrModal
+          pixKey={profile.pixKey} merchantName={professionalName} merchantCity={profile.city}
+          amount={pixCharge.amount - (pixCharge.paidAmount || 0)} txid={pixCharge.id} description={pixCharge.description}
+          onClose={()=>setPixCharge(null)}
+        />
       )}
     </div>
   );

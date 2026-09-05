@@ -1,21 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { loadPatients, loadCharges, loadReceipts, generateReceiptPDF, formatCurrency, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadPatients, loadCharges, loadReceipts, generateReceiptPDF, fetchProfile, loadProfessionalInfoPublic, formatCurrency, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { IconUserPlus, IconWallet } from '../icons.jsx';
+import { PixQrModal } from '../shared.jsx';
 
 function PagamentosPaciente({ user }){
   const [loading, setLoading] = useState(true);
   const [patientRecord, setPatientRecord] = useState(null);
   const [charges, setCharges] = useState([]);
   const [receipts, setReceipts] = useState([]);
+  const [professional, setProfessional] = useState(null);
+  const [pixCharge, setPixCharge] = useState(null);
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
     const record = allPatients.find(p => p.email.toLowerCase() === user.email.toLowerCase());
     setPatientRecord(record || null);
     if(record){
-      const [c, r] = await Promise.all([loadCharges(), loadReceipts()]);
+      const [c, r, prof, info] = await Promise.all([
+        loadCharges(), loadReceipts(), fetchProfile(record.psicologoId), loadProfessionalInfoPublic(record.psicologoId),
+      ]);
       setCharges(c.filter(x => x.patientId === record.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
       setReceipts(r.filter(x => x.patientId === record.id));
+      setProfessional({ name: prof ? prof.name : '', city: info ? info.city : '', pixKey: info ? info.pixKey : '' });
     }
     setLoading(false);
   }, [user.email]);
@@ -52,6 +58,7 @@ function PagamentosPaciente({ user }){
         const isOverdue = c.status === 'pendente' && c.dueDate && c.dueDate < todayStr();
         const displayStatus = isOverdue ? 'vencido' : c.status;
         const receipt = receipts.find(r => r.chargeId === c.id && r.status === 'emitido');
+        const canPay = c.status === 'pendente' || c.status === 'parcial';
         return (
           <div className="charge-card" key={c.id}>
             <div className="cc-top">
@@ -67,14 +74,21 @@ function PagamentosPaciente({ user }){
             {c.paidAmount > 0 && (
               <div className="cc-meta-row"><span>Pago até agora: {formatCurrency(c.paidAmount)}</span></div>
             )}
-            {receipt && (
-              <div className="cc-actions">
-                <button className="btn-link" onClick={()=>generateReceiptPDF(receipt)}>Baixar comprovante</button>
-              </div>
-            )}
+            <div className="cc-actions">
+              {canPay && <button className="btn-link" style={{fontWeight:700}} onClick={()=>setPixCharge(c)}>Pagar com Pix</button>}
+              {receipt && <button className="btn-link" onClick={()=>generateReceiptPDF(receipt)}>Baixar comprovante</button>}
+            </div>
           </div>
         );
       })}
+
+      {pixCharge && professional && (
+        <PixQrModal
+          pixKey={professional.pixKey} merchantName={professional.name} merchantCity={professional.city}
+          amount={pixCharge.amount - (pixCharge.paidAmount || 0)} txid={pixCharge.id} description={pixCharge.description}
+          onClose={()=>setPixCharge(null)}
+        />
+      )}
     </div>
   );
 }
