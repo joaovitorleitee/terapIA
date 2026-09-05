@@ -33,6 +33,7 @@ function App(){
   const [showRoleTerms, setShowRoleTerms] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [section, setSection] = useState('painel');
+  const [taskFocusId, setTaskFocusId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -217,17 +218,17 @@ function App(){
   const initials = currentUser.name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase();
 
   const renderContent = () => {
-    if(role === 'psicologo' && section === 'painel') return <PainelPsicologo psicologoId={currentUser.id} name={currentUser.name.split(' ')[0]} />;
+    if(role === 'psicologo' && section === 'painel') return <PainelPsicologo psicologoId={currentUser.id} name={currentUser.name.split(' ')[0]} onNavigate={(s,taskId)=>{ setTaskFocusId(taskId||null); setSection(s); }} />;
     if(role === 'psicologo' && section === 'agenda') return <AgendaPsicologo psicologoId={currentUser.id} />;
     if(role === 'psicologo' && section === 'pacientes') return <PacientesPsicologo psicologoId={currentUser.id} />;
     if(role === 'psicologo' && section === 'sessoes') return <SessoesNotasPsicologo psicologoId={currentUser.id} currentUserId={currentUser.id} />;
-    if(role === 'psicologo' && section === 'tarefas') return <TarefasPsicologo psicologoId={currentUser.id} />;
+    if(role === 'psicologo' && section === 'tarefas') return <TarefasPsicologo psicologoId={currentUser.id} focusTaskId={taskFocusId} onFocusHandled={()=>setTaskFocusId(null)} />;
     if(role === 'psicologo' && section === 'financeiro') return <FinanceiroPsicologo psicologoId={currentUser.id} professionalName={currentUser.name} />;
     if(role === 'psicologo' && section === 'relatorios') return <RelatoriosPsicologo psicologoId={currentUser.id} />;
     if(role === 'psicologo' && section === 'auditoria') return <AuditoriaPsicologo psicologoId={currentUser.id} />;
-    if(role === 'paciente' && section === 'inicio') return <InicioPaciente user={currentUser} />;
+    if(role === 'paciente' && section === 'inicio') return <InicioPaciente user={currentUser} onNavigate={(s,taskId)=>{ setTaskFocusId(taskId||null); setSection(s); }} />;
     if(role === 'paciente' && section === 'minhas-sessoes') return <MinhasSessoesPaciente user={currentUser} />;
-    if(role === 'paciente' && section === 'minhas-tarefas') return <MinhasTarefasPaciente user={currentUser} />;
+    if(role === 'paciente' && section === 'minhas-tarefas') return <MinhasTarefasPaciente user={currentUser} focusTaskId={taskFocusId} onFocusHandled={()=>setTaskFocusId(null)} />;
     if(role === 'paciente' && section === 'diario') return <DiarioPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'documentos') return <DocumentosPaciente user={currentUser} />;
     if(role === 'paciente' && section === 'pagamentos') return <PagamentosPaciente user={currentUser} />;
@@ -247,7 +248,7 @@ function App(){
         {nav.map(item => (
           <button key={item.key}
                   className={'nav-item ' + (section===item.key ? 'active':'')}
-                  onClick={()=>setSection(item.key)}>
+                  onClick={()=>{ setTaskFocusId(null); setSection(item.key); }}>
             <item.icon size={17} />
             <span>{item.label}</span>
           </button>
@@ -321,7 +322,7 @@ function App(){
       {/* Mobile bottom nav */}
       <nav className="mobile-nav">
         {nav.map(item => (
-          <button key={item.key} className={section===item.key?'active':''} onClick={()=>setSection(item.key)}>
+          <button key={item.key} className={section===item.key?'active':''} onClick={()=>{ setTaskFocusId(null); setSection(item.key); }}>
             <item.icon size={19} />
             {item.label.split(' ')[0]}
           </button>

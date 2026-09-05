@@ -287,7 +287,7 @@ function ModelosPanel({ psicologoId, templates, onRefresh }){
   );
 }
 
-function TarefasPsicologo({ psicologoId }){
+function TarefasPsicologo({ psicologoId, focusTaskId, onFocusHandled }){
   const [tab, setTab] = useState('tarefas'); // tarefas | modelos
   const [tasks, setTasks] = useState(null);
   const [patients, setPatients] = useState([]);
@@ -305,6 +305,19 @@ function TarefasPsicologo({ psicologoId }){
   }, [psicologoId]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Veio de um widget do Painel apontando pra uma tarefa específica — abre direto a edição dela.
+  useEffect(() => {
+    if(!focusTaskId || !tasks) return;
+    const task = tasks.find(t => t.id === focusTaskId);
+    if(task){
+      setTab('tarefas');
+      setEditingTask(task);
+      setShowForm(true);
+    }
+    if(onFocusHandled) onFocusHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskId, tasks]);
 
   const saveTask = async (data) => {
     const all = await loadTasks();

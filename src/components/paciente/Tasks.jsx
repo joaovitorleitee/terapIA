@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { loadPatients, loadTasks, updateTaskFields, pushNotification, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { showToast } from '../../lib/toast.js';
 import { TagInput } from '../shared.jsx';
 import { IconTask, IconUserPlus } from '../icons.jsx';
 
-function TaskCardPaciente({ task, onUpdate }){
+function TaskCardPaciente({ task, onUpdate, forceExpand, innerRef }){
   const [response, setResponse] = useState(task.patientResponse || '');
   const [links, setLinks] = useState(task.patientLinks || []);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [expanded, setExpanded] = useState(task.status !== 'concluida');
+  const [expanded, setExpanded] = useState(task.status !== 'concluida' || !!forceExpand);
 
   // Cancelada é a única situação realmente travada (o psicólogo encerrou a tarefa).
   // Concluída continua editável, caso o paciente queira revisar ou ajustar depois.
@@ -38,7 +38,7 @@ function TaskCardPaciente({ task, onUpdate }){
   };
 
   return (
-    <div className="task-card">
+    <div className="task-card" ref={innerRef} style={forceExpand ? {boxShadow:'0 0 0 2px var(--primary)'} : undefined}>
       <div className="tc-top" style={{cursor: task.status==='concluida' ? 'pointer' : 'default'}} onClick={()=>{ if(task.status==='concluida') setExpanded(e=>!e); }}>
         <div>
           <div className="tc-title">{task.title}</div>
@@ -94,10 +94,11 @@ function TaskCardPaciente({ task, onUpdate }){
 }
 
 
-function MinhasTarefasPaciente({ user }){
+function MinhasTarefasPaciente({ user, focusTaskId, onFocusHandled }){
   const [loading, setLoading] = useState(true);
   const [patientRecord, setPatientRecord] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const cardRefs = useRef({});
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
@@ -114,6 +115,15 @@ function MinhasTarefasPaciente({ user }){
   }, [user.email]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Veio de um widget do Início apontando pra uma tarefa específica — rola até ela.
+  useEffect(() => {
+    if(!focusTaskId || tasks.length === 0) return;
+    const node = cardRefs.current[focusTaskId];
+    if(node) node.scrollIntoView({ behavior:'smooth', block:'center' });
+    if(onFocusHandled) onFocusHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskId, tasks]);
 
   const updateTask = async (task, patch) => {
     const now = new Date().toISOString();
@@ -166,13 +176,19 @@ function MinhasTarefasPaciente({ user }){
       <h3 style={{fontSize:15, marginBottom:10}}>Ativas</h3>
       {activeTasks.length === 0 ? (
         <div className="field hint" style={{marginBottom:20}}>Nenhuma tarefa ativa no momento — tudo em dia!</div>
-      ) : activeTasks.map(t => <TaskCardPaciente key={t.id} task={t} onUpdate={(patch)=>updateTask(t, patch)} />)}
+      ) : activeTasks.map(t => (
+        <TaskCardPaciente key={t.id} task={t} onUpdate={(patch)=>updateTask(t, patch)}
+                           forceExpand={t.id===focusTaskId} innerRef={el=>{ cardRefs.current[t.id]=el; }} />
+      ))}
 
       {doneTasks.length > 0 && (
         <React.Fragment>
           <h3 style={{fontSize:15, margin:'22px 0 10px 0'}}>Histórico</h3>
           <div className="field hint" style={{marginBottom:10}}>Concluídas — clique para reabrir e editar, se precisar.</div>
-          {doneTasks.map(t => <TaskCardPaciente key={t.id} task={t} onUpdate={(patch)=>updateTask(t, patch)} />)}
+          {doneTasks.map(t => (
+            <TaskCardPaciente key={t.id} task={t} onUpdate={(patch)=>updateTask(t, patch)}
+                               forceExpand={t.id===focusTaskId} innerRef={el=>{ cardRefs.current[t.id]=el; }} />
+          ))}
         </React.Fragment>
       )}
     </div>

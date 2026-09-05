@@ -1,29 +1,46 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   loadSessions, loadTasks, loadCharges, loadPatients, loadAvailability, loadExpenses, loadNotes,
+  loadProfessionalProfile, getProfessionalPhotoUrl,
   formatCurrency, formatDateOnly, todayStr, monthRange, expenseAppliesToPeriod,
   WIDGET_CATALOG_PSICOLOGO, loadDashboardWidgets, addDashboardWidget, removeDashboardWidget,
 } from '../../lib/dataStore.js';
 import { WidgetPickerModal } from '../shared.jsx';
+import { IconUsers } from '../icons.jsx';
 
-function PainelPsicologo({ psicologoId, name }){
+// Pra onde cada widget leva quando clicado.
+const WIDGET_TARGETS = {
+  despesas_mes: 'financeiro',
+  recebimentos_pendentes: 'financeiro',
+  inadimplencia_total: 'relatorios',
+  sessoes_realizadas_mes: 'relatorios',
+  notas_recentes: 'sessoes',
+  tarefas_atrasadas: 'tarefas',
+  tarefas_concluidas_mes: 'tarefas',
+};
+
+function PainelPsicologo({ psicologoId, name, onNavigate }){
   const [loading, setLoading] = useState(true);
   const [todaySessions, setTodaySessions] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [activeTasksCount, setActiveTasksCount] = useState(0);
+  const [singleActiveTaskId, setSingleActiveTaskId] = useState(null);
   const [overdueCharges, setOverdueCharges] = useState([]);
   const [monthRevenue, setMonthRevenue] = useState(0);
   const [monthExpenses, setMonthExpenses] = useState(0);
   const [patients, setPatients] = useState([]);
   const [meetingLink, setMeetingLink] = useState('');
+  const [myPhotoPath, setMyPhotoPath] = useState('');
   const [extra, setExtra] = useState({});
   const [widgetKeys, setWidgetKeys] = useState([]);
   const [showPicker, setShowPicker] = useState(false);
 
+  const go = (section, taskId) => { if(onNavigate) onNavigate(section, taskId); };
+
   const refresh = useCallback(async () => {
-    const [sessions, tasks, charges, pats, availability, expenses, notes, widgets] = await Promise.all([
+    const [sessions, tasks, charges, pats, availability, expenses, notes, widgets, profile] = await Promise.all([
       loadSessions(), loadTasks(), loadCharges(), loadPatients(), loadAvailability(psicologoId),
-      loadExpenses(), loadNotes(), loadDashboardWidgets(psicologoId),
+      loadExpenses(), loadNotes(), loadDashboardWidgets(psicologoId), loadProfessionalProfile(psicologoId),
     ]);
     const mySessions = sessions.filter(s => s.psicologoId === psicologoId);
     const myTasks = tasks.filter(t => t.psicologoId === psicologoId);
@@ -34,6 +51,7 @@ function PainelPsicologo({ psicologoId, name }){
     setPatients(myPatients);
     setMeetingLink(availability.meetingLink || '');
     setWidgetKeys(widgets);
+    setMyPhotoPath(profile.photoPath || '');
 
     const today = todayStr();
     setTodaySessions(
@@ -41,7 +59,9 @@ function PainelPsicologo({ psicologoId, name }){
                  .sort((a,b) => a.startTime.localeCompare(b.startTime))
     );
     setPendingCount(mySessions.filter(s => s.status === 'pendente').length);
-    setActiveTasksCount(myTasks.filter(t => t.status === 'pendente' || t.status === 'em_andamento').length);
+    const activeTasks = myTasks.filter(t => t.status === 'pendente' || t.status === 'em_andamento');
+    setActiveTasksCount(activeTasks.length);
+    setSingleActiveTaskId(activeTasks.length === 1 ? activeTasks[0].id : null);
     setOverdueCharges(
       myCharges.filter(c => (c.status === 'pendente' || c.status === 'parcial') && c.dueDate && c.dueDate < today)
                 .sort((a,b) => a.dueDate.localeCompare(b.dueDate))
@@ -83,13 +103,15 @@ function PainelPsicologo({ psicologoId, name }){
   const patientName = (id) => { const p = patients.find(x => x.id === id); return p ? (p.socialName||p.name) : 'Paciente'; };
   const sessionStatusLabel = { pendente:'Pendente', agendada:'Agendada', confirmada:'Confirmada' };
   const netProfit = monthRevenue - monthExpenses;
+  const photoUrl = myPhotoPath ? getProfessionalPhotoUrl(myPhotoPath) : null;
 
   const handleAddWidget = async (key) => {
     await addDashboardWidget(psicologoId, key);
     setShowPicker(false);
     await refresh();
   };
-  const handleRemoveWidget = async (key) => {
+  const handleRemoveWidget = async (key, e) => {
+    e.stopPropagation();
     await removeDashboardWidget(psicologoId, key);
     await refresh();
   };
@@ -100,8 +122,8 @@ function PainelPsicologo({ psicologoId, name }){
     const isMoney = ['despesas_mes','inadimplencia_total'].includes(key);
     const value = extra[key];
     return (
-      <div className="widget-square" key={key}>
-        <button className="widget-remove-btn" onClick={()=>handleRemoveWidget(key)} title="Remover">×</button>
+      <div className="widget-square" key={key} style={{cursor:'pointer'}} onClick={()=>go(WIDGET_TARGETS[key] || 'painel')}>
+        <button className="widget-remove-btn" onClick={(e)=>handleRemoveWidget(key,e)} title="Remover">×</button>
         <div className="widget-label">{catalogItem.label}</div>
         <div className={'widget-value'+(isMoney?' small':'')}>{isMoney ? formatCurrency(value||0) : (value ?? 0)}</div>
       </div>
@@ -114,29 +136,44 @@ function PainelPsicologo({ psicologoId, name }){
 
   return (
     <div>
-      <div className="welcome-card">
-        <h2>Bem-vindo(a), {name}.</h2>
-        <p>Este é o resumo do seu consultório — indicadores calculados só a partir dos seus próprios dados.</p>
+      <div className="welcome-card" style={{display:'flex', alignItems:'center', gap:16}}>
+        <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+          {photoUrl ? <img src={photoUrl} alt="Minha foto" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <IconUsers size={26} color="#fff" />}
+        </div>
+        <div>
+          <h2>Bem-vindo(a), {name}.</h2>
+          <p>Este é o resumo do seu consultório — indicadores calculados só a partir dos seus próprios dados.</p>
+        </div>
       </div>
 
       <div className="grid-cards">
-        <div className="stat-card"><div className="stat-label">Sessões hoje</div><div className="stat-value">{todaySessions.length}</div></div>
-        <div className="stat-card"><div className="stat-label">Pendentes de confirmação</div><div className="stat-value">{pendingCount}</div></div>
-        <div className="stat-card"><div className="stat-label">Tarefas para acompanhar</div><div className="stat-value">{activeTasksCount}</div></div>
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('agenda')}>
+          <div className="stat-label">Sessões hoje</div><div className="stat-value">{todaySessions.length}</div>
+        </div>
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('agenda')}>
+          <div className="stat-label">Pendentes de confirmação</div><div className="stat-value">{pendingCount}</div>
+        </div>
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('tarefas', singleActiveTaskId)}>
+          <div className="stat-label">Tarefas para acompanhar</div><div className="stat-value">{activeTasksCount}</div>
+        </div>
         {overdueCharges.length > 0 && (
-          <div className="stat-card danger"><div className="stat-label">Cobranças vencidas</div><div className="stat-value">{overdueCharges.length}</div></div>
+          <div className="stat-card danger" style={{cursor:'pointer'}} onClick={()=>go('financeiro')}>
+            <div className="stat-label">Cobranças vencidas</div><div className="stat-value">{overdueCharges.length}</div>
+          </div>
         )}
       </div>
 
       <div className="grid-cards" style={{marginTop:16}}>
-        <div className="stat-card"><div className="stat-label">Receita do mês</div><div className="stat-value" style={{fontSize:22}}>{formatCurrency(monthRevenue)}</div></div>
-        <div className="stat-card">
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('financeiro')}>
+          <div className="stat-label">Receita do mês</div><div className="stat-value" style={{fontSize:22}}>{formatCurrency(monthRevenue)}</div>
+        </div>
+        <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('relatorios')}>
           <div className="stat-label">Lucro líquido</div>
           <div className="stat-value" style={{fontSize:22, color: netProfit>=0 ? 'var(--primary-dark)' : '#7A362C'}}>{formatCurrency(netProfit)}</div>
         </div>
       </div>
 
-      <div className="panel" style={{marginTop:20}}>
+      <div className="panel" style={{marginTop:20, cursor:'pointer'}} onClick={()=>go('agenda')}>
         <h3>Sessões de hoje</h3>
         <div className="panel-sub">Sua agenda para as próximas horas.</div>
         {todaySessions.length === 0 ? (
@@ -146,7 +183,7 @@ function PainelPsicologo({ psicologoId, name }){
             <span>{s.startTime} · {patientName(s.patientId)}</span>
             <div style={{display:'flex', alignItems:'center', gap:8}}>
               {s.modalidade === 'Online' && meetingLink && (
-                <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700}}>Entrar na sessão</a>
+                <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700}} onClick={e=>e.stopPropagation()}>Entrar na sessão</a>
               )}
               <span className={'badge status-'+s.status}>{sessionStatusLabel[s.status]}</span>
             </div>
@@ -155,7 +192,7 @@ function PainelPsicologo({ psicologoId, name }){
       </div>
 
       {overdueCharges.length > 0 && (
-        <div className="panel">
+        <div className="panel" style={{cursor:'pointer'}} onClick={()=>go('financeiro')}>
           <h3>Cobranças vencidas</h3>
           <div className="panel-sub">Resolva em Financeiro › Recebimentos.</div>
           {overdueCharges.map(c => (

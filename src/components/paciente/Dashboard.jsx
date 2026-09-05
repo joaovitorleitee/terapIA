@@ -8,11 +8,20 @@ import {
 import { TermsModal, WidgetPickerModal } from '../shared.jsx';
 import { IconUsers } from '../icons.jsx';
 
-function InicioPaciente({ user }){
+// Pra onde cada widget leva quando clicado.
+const WIDGET_TARGETS = {
+  documentos_enviados: 'documentos',
+  diario_sequencia: 'diario',
+  tarefas_concluidas_total: 'minhas-tarefas',
+  pagamentos_realizados: 'pagamentos',
+};
+
+function InicioPaciente({ user, onNavigate }){
   const [showTerms, setShowTerms] = useState(false);
   const [loading, setLoading] = useState(true);
   const [nextSession, setNextSession] = useState(null);
   const [activeTasks, setActiveTasks] = useState(0);
+  const [singleActiveTaskId, setSingleActiveTaskId] = useState(null);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [overdueCharges, setOverdueCharges] = useState(0);
   const [professional, setProfessional] = useState(null);
@@ -24,6 +33,8 @@ function InicioPaciente({ user }){
   const [widgetKeys, setWidgetKeys] = useState([]);
   const [showPicker, setShowPicker] = useState(false);
   const photoInputRef = useRef(null);
+
+  const go = (section, taskId) => { if(onNavigate) onNavigate(section, taskId); };
 
   const refresh = useCallback(async () => {
     const allPatients = await loadPatients();
@@ -44,7 +55,9 @@ function InicioPaciente({ user }){
         .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
       setNextSession(mySessions[0] || null);
       const myTasks = tasks.filter(t => t.patientId === record.id);
-      setActiveTasks(myTasks.filter(t => t.status === 'pendente' || t.status === 'em_andamento').length);
+      const myActiveTasks = myTasks.filter(t => t.status === 'pendente' || t.status === 'em_andamento');
+      setActiveTasks(myActiveTasks.length);
+      setSingleActiveTaskId(myActiveTasks.length === 1 ? myActiveTasks[0].id : null);
       setCompletedTasks(myTasks.filter(t => t.status === 'concluida').length);
       const myCharges = charges.filter(c => c.patientId === record.id);
       setOverdueCharges(myCharges.filter(c => (c.status === 'pendente' || c.status === 'parcial') && c.dueDate && c.dueDate < today).length);
@@ -89,7 +102,8 @@ function InicioPaciente({ user }){
     setShowPicker(false);
     await refresh();
   };
-  const handleRemoveWidget = async (key) => {
+  const handleRemoveWidget = async (key, e) => {
+    e.stopPropagation();
     await removeDashboardWidget(user.id, key);
     await refresh();
   };
@@ -98,8 +112,8 @@ function InicioPaciente({ user }){
     const catalogItem = WIDGET_CATALOG_PACIENTE.find(w => w.key === key);
     if(!catalogItem) return null;
     return (
-      <div className="widget-square" key={key}>
-        <button className="widget-remove-btn" onClick={()=>handleRemoveWidget(key)} title="Remover">×</button>
+      <div className="widget-square" key={key} style={{cursor:'pointer'}} onClick={()=>go(WIDGET_TARGETS[key] || 'inicio')}>
+        <button className="widget-remove-btn" onClick={(e)=>handleRemoveWidget(key,e)} title="Remover">×</button>
         <div className="widget-label">{catalogItem.label}</div>
         <div className="widget-value">{extra[key] ?? 0}</div>
       </div>
@@ -133,27 +147,27 @@ function InicioPaciente({ user }){
       ) : (
         <React.Fragment>
           <div className="grid-cards">
-            <div className="stat-card">
+            <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('minhas-sessoes')}>
               <div className="stat-label">Próxima sessão</div>
               <div className="stat-value" style={{fontSize: nextSession ? 17 : 28}}>
                 {nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma agendada'}
               </div>
               {nextSession && meetingLink && (
-                <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
+                <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}} onClick={e=>e.stopPropagation()}>
                   Entrar na sessão →
                 </a>
               )}
             </div>
-            <div className="stat-card">
+            <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('minhas-tarefas', singleActiveTaskId)}>
               <div className="stat-label">Tarefas ativas</div>
               <div className="stat-value">{activeTasks}</div>
             </div>
-            <div className="stat-card">
+            <div className="stat-card" style={{cursor:'pointer'}} onClick={()=>go('minhas-tarefas')}>
               <div className="stat-label">Tarefas concluídas</div>
               <div className="stat-value">{completedTasks}</div>
             </div>
             {overdueCharges > 0 && (
-              <div className="stat-card danger">
+              <div className="stat-card danger" style={{cursor:'pointer'}} onClick={()=>go('pagamentos')}>
                 <div className="stat-label">Cobranças vencidas</div>
                 <div className="stat-value">{overdueCharges}</div>
               </div>
