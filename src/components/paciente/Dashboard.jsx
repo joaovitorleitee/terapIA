@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { loadPatients, loadSessions, loadTasks, loadCharges, loadProfessionalInfoPublic, getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadPatients, loadSessions, loadTasks, loadCharges, loadAvailability, loadProfessionalInfoPublic, getProfessionalPhotoUrl, uploadOwnPhoto, fetchProfile, formatDate, formatDateOnly, todayStr } from '../../lib/dataStore.js';
 import { TermsModal } from '../shared.jsx';
 import { IconUsers } from '../icons.jsx';
 
@@ -14,6 +14,7 @@ function InicioPaciente({ user }){
   const [professionalName, setProfessionalName] = useState('');
   const [myPhotoPath, setMyPhotoPath] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [meetingLink, setMeetingLink] = useState('');
   const photoInputRef = useRef(null);
 
   useEffect(() => {
@@ -23,9 +24,10 @@ function InicioPaciente({ user }){
       const me = await fetchProfile(user.id);
       if(me) setMyPhotoPath(me.photoPath);
       if(record){
-        const [sessions, tasks, charges, prof, psi] = await Promise.all([
-          loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId), fetchProfile(record.psicologoId),
+        const [sessions, tasks, charges, prof, psi, availability] = await Promise.all([
+          loadSessions(), loadTasks(), loadCharges(), loadProfessionalInfoPublic(record.psicologoId), fetchProfile(record.psicologoId), loadAvailability(record.psicologoId),
         ]);
+        setMeetingLink(availability.meetingLink || '');
         const mySessions = sessions
           .filter(s => s.patientId === record.id && s.date >= todayStr() && ['confirmada','pendente','agendada'].includes(s.status))
           .sort((a,b) => (a.date+a.startTime).localeCompare(b.date+b.startTime));
@@ -79,6 +81,11 @@ function InicioPaciente({ user }){
           <div className="stat-value" style={{fontSize: nextSession ? 17 : 28}}>
             {loading ? '—' : (nextSession ? `${formatDateOnly(nextSession.date)} · ${nextSession.startTime}` : 'Nenhuma agendada')}
           </div>
+          {nextSession && nextSession.modalidade === 'Online' && meetingLink && (
+            <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-block', marginTop:6}}>
+              Entrar na sessão →
+            </a>
+          )}
         </div>
         <div className="stat-card">
           <div className="stat-label">Tarefas ativas</div>

@@ -94,7 +94,7 @@ function defaultAvailability(){
       ? { enabled:false, start:'08:00', end:'18:00' }
       : { enabled:true, start:'08:00', end:'18:00' };
   });
-  return { weeklyHours, defaultDurationMin:50, bufferMin:10, minAdvanceHours:24, maxAdvanceDays:60, bookingMode:'auto' };
+  return { weeklyHours, defaultDurationMin:50, bufferMin:10, minAdvanceHours:24, maxAdvanceDays:60, bookingMode:'auto', meetingLink:'' };
 }
 async function loadAvailability(psicologoId){
   const { data, error } = await supabase.from('availability').select('*').eq('psicologo_id', psicologoId).maybeSingle();
@@ -103,6 +103,7 @@ async function loadAvailability(psicologoId){
   return {
     weeklyHours: data.weekly_hours, defaultDurationMin: data.default_duration_min, bufferMin: data.buffer_min,
     minAdvanceHours: data.min_advance_hours, maxAdvanceDays: data.max_advance_days, bookingMode: data.booking_mode,
+    meetingLink: data.meeting_link || '',
   };
 }
 async function saveAvailability(psicologoId, availability){
@@ -110,7 +111,7 @@ async function saveAvailability(psicologoId, availability){
     psicologo_id: psicologoId, weekly_hours: availability.weeklyHours,
     default_duration_min: availability.defaultDurationMin, buffer_min: availability.bufferMin,
     min_advance_hours: availability.minAdvanceHours, max_advance_days: availability.maxAdvanceDays,
-    booking_mode: availability.bookingMode, updated_at: new Date().toISOString(),
+    booking_mode: availability.bookingMode, meeting_link: availability.meetingLink || null, updated_at: new Date().toISOString(),
   };
   const { error } = await supabase.from('availability').upsert(row, { onConflict:'psicologo_id' });
   logDbError('saveAvailability', error);

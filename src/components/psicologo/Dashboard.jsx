@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { loadSessions, loadTasks, loadCharges, loadPatients, formatCurrency, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { loadSessions, loadTasks, loadCharges, loadPatients, loadAvailability, formatCurrency, formatDateOnly, todayStr } from '../../lib/dataStore.js';
+import { IconCalendar } from '../icons.jsx';
 
 function PainelPsicologo({ psicologoId, name }){
   const [loading, setLoading] = useState(true);
@@ -9,15 +10,19 @@ function PainelPsicologo({ psicologoId, name }){
   const [overdueCharges, setOverdueCharges] = useState([]);
   const [monthRevenue, setMonthRevenue] = useState(0);
   const [patients, setPatients] = useState([]);
+  const [meetingLink, setMeetingLink] = useState('');
 
   useEffect(() => {
     (async () => {
-      const [sessions, tasks, charges, pats] = await Promise.all([loadSessions(), loadTasks(), loadCharges(), loadPatients()]);
+      const [sessions, tasks, charges, pats, availability] = await Promise.all([
+        loadSessions(), loadTasks(), loadCharges(), loadPatients(), loadAvailability(psicologoId),
+      ]);
       const mySessions = sessions.filter(s => s.psicologoId === psicologoId);
       const myTasks = tasks.filter(t => t.psicologoId === psicologoId);
       const myCharges = charges.filter(c => c.psicologoId === psicologoId);
       const myPatients = pats.filter(p => p.psicologoId === psicologoId);
       setPatients(myPatients);
+      setMeetingLink(availability.meetingLink || '');
 
       const today = todayStr();
       setTodaySessions(
@@ -58,7 +63,11 @@ function PainelPsicologo({ psicologoId, name }){
         <div className="stat-card"><div className="stat-label">Pendentes de confirmação</div><div className="stat-value">{loading ? '—' : pendingSessions.length}</div></div>
         <div className="stat-card"><div className="stat-label">Tarefas para acompanhar</div><div className="stat-value">{loading ? '—' : activeTasksCount}</div></div>
         <div className="stat-card"><div className="stat-label">Cobranças vencidas</div><div className="stat-value">{loading ? '—' : overdueCharges.length}</div></div>
-        <div className="stat-card"><div className="stat-label">Receita do mês</div><div className="stat-value" style={{fontSize:20}}>{loading ? '—' : formatCurrency(monthRevenue)}</div></div>
+      </div>
+
+      <div className="stat-card" style={{marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
+        <div className="stat-label">Receita do mês</div>
+        <div className="stat-value" style={{fontSize:22}}>{loading ? '—' : formatCurrency(monthRevenue)}</div>
       </div>
 
       {!loading && (
@@ -71,7 +80,14 @@ function PainelPsicologo({ psicologoId, name }){
             ) : todaySessions.map(s => (
               <div className="mini-session-row" key={s.id}>
                 <span>{s.startTime} · {patientName(s.patientId)}</span>
-                <span className={'badge status-'+s.status}>{sessionStatusLabel[s.status]}</span>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  {s.modalidade === 'Online' && meetingLink && (
+                    <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn-link" style={{fontWeight:700, display:'inline-flex', alignItems:'center', gap:4}}>
+                      <IconCalendar size={13}/> Entrar na sessão
+                    </a>
+                  )}
+                  <span className={'badge status-'+s.status}>{sessionStatusLabel[s.status]}</span>
+                </div>
               </div>
             ))}
           </div>

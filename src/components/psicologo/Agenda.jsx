@@ -28,6 +28,32 @@ function BookingModePanel({ availability, onChange }){
   );
 }
 
+function MeetingLinkPanel({ availability, onChange }){
+  const [value, setValue] = useState(availability.meetingLink || '');
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    onChange({ ...availability, meetingLink: value.trim() });
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 1500);
+  };
+
+  return (
+    <div className="panel">
+      <h3>Link de reunião online</h3>
+      <div className="panel-sub">Cadastre seu link fixo do Google Meet, Teams, Zoom ou outro serviço. Ele passa a aparecer automaticamente em toda sessão marcada como Online, tanto para você quanto para o paciente.</div>
+      <div className="field full" style={{marginBottom:0}}>
+        <input value={value} onChange={e=>setValue(e.target.value)} placeholder="https://meet.google.com/xxx-xxxx-xxx" />
+      </div>
+      <div className="modal-actions" style={{marginTop:12, justifyContent:'flex-start'}}>
+        <button className="btn-primary" type="button" style={{width:'auto', padding:'9px 18px'}} onClick={save}>
+          {saved ? 'Salvo!' : 'Salvar link'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 function WeeklyHoursPanel({ availability, onChange }){
   const setDay = (key, patch) => {
@@ -828,6 +854,7 @@ function AgendaPsicologo({ psicologoId }){
       {tab === 'disponibilidade' && (
         <div>
           <BookingModePanel availability={availability} onChange={persistAvailability} />
+          <MeetingLinkPanel availability={availability} onChange={persistAvailability} />
           <WeeklyHoursPanel availability={availability} onChange={persistAvailability} />
           <BlocksPanel psicologoId={psicologoId} blocks={blocks} onAdd={addBlock} onRemove={removeBlock} />
         </div>
