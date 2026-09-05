@@ -13,16 +13,16 @@ function downloadBlob(blob, filename){
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function buildProntuarioDocx(patient, sessions, selectedNotes){
+async function buildProntuarioDocx(patient, selectedSessions, selectedNotes){
   const children = [
     new Paragraph({ text: `Prontuário — ${patient.socialName || patient.name}`, heading: HeadingLevel.HEADING_1 }),
     new Paragraph({ text: `Exportado em ${formatDate(new Date().toISOString())}`, spacing:{ after:240 } }),
     new Paragraph({ text: 'Sessões', heading: HeadingLevel.HEADING_2, spacing:{ after:120 } }),
   ];
-  if(sessions.length === 0){
-    children.push(new Paragraph('Nenhuma sessão registrada.'));
+  if(selectedSessions.length === 0){
+    children.push(new Paragraph('Nenhuma sessão selecionada para esta exportação.'));
   } else {
-    sessions.forEach(s => {
+    selectedSessions.forEach(s => {
       children.push(new Paragraph(`${formatDateOnly(s.date)} ${s.startTime} — ${s.status} — ${s.modalidade || 'Presencial'}`));
     });
   }
@@ -45,7 +45,7 @@ async function buildProntuarioDocx(patient, sessions, selectedNotes){
   return Packer.toBlob(doc);
 }
 
-function buildProntuarioPdf(patient, sessions, selectedNotes){
+function buildProntuarioPdf(patient, selectedSessions, selectedNotes){
   const doc = new jsPDF();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginBottom = 20;
@@ -60,8 +60,8 @@ function buildProntuarioPdf(patient, sessions, selectedNotes){
 
   doc.setFontSize(13); doc.text('Sessões', 15, y); y += 7;
   doc.setFontSize(10);
-  if(sessions.length === 0){ ensureSpace(6); doc.text('Nenhuma sessão registrada.', 15, y); y += 6; }
-  sessions.forEach(s => {
+  if(selectedSessions.length === 0){ ensureSpace(6); doc.text('Nenhuma sessão selecionada para esta exportação.', 15, y); y += 6; }
+  selectedSessions.forEach(s => {
     ensureSpace(6);
     doc.text(`${formatDateOnly(s.date)} ${s.startTime} — ${s.status} — ${s.modalidade || 'Presencial'}`, 15, y);
     y += 6;
@@ -84,12 +84,18 @@ function buildProntuarioPdf(patient, sessions, selectedNotes){
   return doc.output('blob');
 }
 
-function ExportRecordModal({ patient, notes, onClose, onExported }){
-  const [selectedIds, setSelectedIds] = useState(() => new Set(notes.map(n => n.id)));
+function ExportRecordModal({ patient, sessions, notes, onClose, onExported }){
+  const [selectedSessionIds, setSelectedSessionIds] = useState(() => new Set(sessions.map(s => s.id)));
+  const [selectedNoteIds, setSelectedNoteIds] = useState(() => new Set(notes.map(n => n.id)));
   const [format, setFormat] = useState('docx');
   const [busy, setBusy] = useState(false);
 
-  const toggle = (id) => setSelectedIds(prev => {
+  const toggleSession = (id) => setSelectedSessionIds(prev => {
+    const next = new Set(prev);
+    if(next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleNote = (id) => setSelectedNoteIds(prev => {
     const next = new Set(prev);
     if(next.has(id)) next.delete(id); else next.add(id);
     return next;
@@ -98,8 +104,9 @@ function ExportRecordModal({ patient, notes, onClose, onExported }){
   const doExport = async () => {
     setBusy(true);
     try{
-      const selectedNotes = notes.filter(n => selectedIds.has(n.id));
-      await onExported(format, selectedNotes);
+      const selectedSessions = sessions.filter(s => selectedSessionIds.has(s.id));
+      const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
+      await onExported(format, selectedSessions, selectedNotes);
       onClose();
     } finally { setBusy(false); }
   };
@@ -115,12 +122,36 @@ function ExportRecordModal({ patient, notes, onClose, onExported }){
             <button type="button" className={'filter-pill '+(format==='pdf'?'active':'')} onClick={()=>setFormat('pdf')}>PDF</button>
           </div>
         </div>
-        <div className="field full">
+
+        <div style={{marginBottom:16}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-            <label style={{margin:0}}>Notas a incluir ({selectedIds.size} de {notes.length})</label>
+            <div style={{fontSize:12.5, fontWeight:600}}>Sessões a incluir ({selectedSessionIds.size} de {sessions.length})</div>
             <div style={{display:'flex', gap:12}}>
-              <button type="button" className="btn-link" onClick={()=>setSelectedIds(new Set(notes.map(n=>n.id)))}>Selecionar todas</button>
-              <button type="button" className="btn-link" onClick={()=>setSelectedIds(new Set())}>Limpar</button>
+              <button type="button" className="btn-link" onClick={()=>setSelectedSessionIds(new Set(sessions.map(s=>s.id)))}>Selecionar todas</button>
+              <button type="button" className="btn-link" onClick={()=>setSelectedSessionIds(new Set())}>Limpar</button>
+            </div>
+          </div>
+          {sessions.length === 0 ? (
+            <div className="field hint">Nenhuma sessão registrada para este paciente.</div>
+          ) : (
+            <div style={{maxHeight:180, overflowY:'auto', border:'1px solid var(--border)', borderRadius:10, padding:4}}>
+              {sessions.map(s => (
+                <label key={s.id} style={{display:'flex', gap:8, alignItems:'center', padding:'7px 8px', borderBottom:'1px solid var(--border)', cursor:'pointer'}}>
+                  <input type="checkbox" checked={selectedSessionIds.has(s.id)} onChange={()=>toggleSession(s.id)}
+                         style={{width:'auto', padding:0, border:'none', background:'none'}} />
+                  <span style={{fontSize:12.5}}>{formatDateOnly(s.date)} {s.startTime} — {s.status} — {s.modalidade || 'Presencial'}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+            <div style={{fontSize:12.5, fontWeight:600}}>Notas a incluir ({selectedNoteIds.size} de {notes.length})</div>
+            <div style={{display:'flex', gap:12}}>
+              <button type="button" className="btn-link" onClick={()=>setSelectedNoteIds(new Set(notes.map(n=>n.id)))}>Selecionar todas</button>
+              <button type="button" className="btn-link" onClick={()=>setSelectedNoteIds(new Set())}>Limpar</button>
             </div>
           </div>
           {notes.length === 0 ? (
@@ -129,16 +160,18 @@ function ExportRecordModal({ patient, notes, onClose, onExported }){
             <div style={{maxHeight:280, overflowY:'auto', border:'1px solid var(--border)', borderRadius:10, padding:4}}>
               {notes.map(n => (
                 <label key={n.id} style={{display:'flex', gap:8, alignItems:'flex-start', padding:'8px 8px', borderBottom:'1px solid var(--border)', cursor:'pointer'}}>
-                  <input type="checkbox" checked={selectedIds.has(n.id)} onChange={()=>toggle(n.id)} style={{marginTop:3}} />
-                  <span>
+                  <input type="checkbox" checked={selectedNoteIds.has(n.id)} onChange={()=>toggleNote(n.id)}
+                         style={{width:'auto', padding:0, border:'none', background:'none', marginTop:3, flexShrink:0}} />
+                  <div>
                     <div style={{fontSize:12.5, fontWeight:700}}>{formatDate(n.createdAt)}{n.tags && n.tags.length ? ' · '+n.tags.join(', ') : ''}</div>
-                    <div style={{fontSize:12, color:'var(--ink-muted)'}}>{n.text.length > 90 ? n.text.slice(0,90)+'…' : n.text}</div>
-                  </span>
+                    <div style={{fontSize:12, color:'var(--ink-muted)'}}>{(n.text || '').length > 90 ? n.text.slice(0,90)+'…' : (n.text || '')}</div>
+                  </div>
                 </label>
               ))}
             </div>
           )}
         </div>
+
         <div className="modal-actions" style={{marginTop:16}}>
           <button className="btn-secondary" type="button" onClick={onClose}>Cancelar</button>
           <button className="btn-primary" type="button" onClick={doExport} disabled={busy}>
@@ -258,13 +291,13 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
 
   const [showExportModal, setShowExportModal] = useState(false);
 
-  const handleExport = async (format, selectedNotes) => {
+  const handleExport = async (format, selectedSessions, selectedNotes) => {
     const slug = (patient.name || 'paciente').replace(/\s+/g, '-').toLowerCase();
     if(format === 'docx'){
-      const blob = await buildProntuarioDocx(patient, sessions, selectedNotes);
+      const blob = await buildProntuarioDocx(patient, selectedSessions, selectedNotes);
       downloadBlob(blob, `prontuario-${slug}.docx`);
     } else {
-      const blob = buildProntuarioPdf(patient, sessions, selectedNotes);
+      const blob = buildProntuarioPdf(patient, selectedSessions, selectedNotes);
       downloadBlob(blob, `prontuario-${slug}.pdf`);
     }
     await pushAudit({ userId: currentUserId, action:'prontuario_exportado', patientId: patient.id });
@@ -324,7 +357,7 @@ function PatientRecordView({ patient, psicologoId, currentUserId, onBack }){
       )}
 
       {showExportModal && (
-        <ExportRecordModal patient={patient} notes={notes} onClose={()=>setShowExportModal(false)} onExported={handleExport} />
+        <ExportRecordModal patient={patient} sessions={sessions} notes={notes} onClose={()=>setShowExportModal(false)} onExported={handleExport} />
       )}
     </div>
   );
